@@ -8,34 +8,38 @@ generator client {
   previewFeatures = ["fullTextSearch"]
 }
 
+// ==========================================
 // BASE MODULE
+// ==========================================
 
 model Base_user {
-  id               Int                 @id @default(autoincrement())
-  username         String              @unique
+  id               Int                @id @default(autoincrement())
+  username         String             @unique
   password         String
-  email            String              @unique
-  createdDate      DateTime            @default(now())
+  email            String             @unique
+  createdDate      DateTime           @default(now())
   lastPasswordDate DateTime?
-  modifiedDate     DateTime            @default(now())
-  active           Boolean             @default(true)
-  Person           Base_person?        @relation(fields: [personId], references: [id])
+  modifiedDate     DateTime           @default(now())
+  active           Boolean            @default(true)
+  Person           Base_person?       @relation(fields: [personId], references: [id])
   personId         Int?
-  recoverToken     String              @default("")
+  recoverToken     String             @default("")
   recoverDate      DateTime?
   roles            Base_rolesOnUsers[]
-  AccountType      Base_parameter?     @relation(fields: [accountTypeId], references: [id])
+  AccountType      Base_parameter?    @relation(fields: [accountTypeId], references: [id])
   accountTypeId    Int?
   logs             Audit_log[]
   courts           courts[]
+  // Relación añadida para RestoBook
+  bookings         Base_booking[]
 }
 
 model Base_person {
-  id        Int         @id @default(autoincrement())
-  dni       String      @unique
+  id        Int       @id @default(autoincrement())
+  dni       String    @unique
   name      String
   users     Base_user[]
-  email     String?     @unique
+  email     String?   @unique
   photo     String?
   firstName String
   lastName  String
@@ -68,14 +72,14 @@ model Base_module {
 }
 
 model Base_page {
-  id       Int          @id @default(autoincrement())
-  code     String?      @unique
-  name     String       @db.VarChar(50)
-  url      String?
-  Module   Base_module? @relation(fields: [moduleId], references: [id])
-  moduleId Int?
-  menus    Base_menu[]
-  active   Boolean      @default(true)
+  id        Int          @id @default(autoincrement())
+  code      String?      @unique
+  name      String       @db.VarChar(50)
+  url       String?
+  Module    Base_module? @relation(fields: [moduleId], references: [id])
+  moduleId  Int?
+  menus     Base_menu[]
+  active    Boolean      @default(true)
 }
 
 model Base_menu {
@@ -181,16 +185,18 @@ model Base_mailAccount {
 }
 
 model Base_parameter {
-  id     Int         @id @default(autoincrement())
-  key    String      @unique @db.VarChar
-  name   String      @db.VarChar(100)
-  value  String      @db.VarChar(100)
-  active Boolean     @default(true)
-  code   String?     @unique
+  id     Int       @id @default(autoincrement())
+  key    String    @unique @db.VarChar
+  name   String    @db.VarChar(100)
+  value  String    @db.VarChar(100)
+  active Boolean   @default(true)
+  code   String?   @unique
   users  Base_user[]
 }
 
+// ==========================================
 // AUDIT MODULE
+// ==========================================
 
 model Audit_log {
   id       Int       @id @default(autoincrement())
@@ -203,7 +209,29 @@ model Audit_log {
   data     Json
 }
 
-// Kick-Off Module
+// ==========================================
+// KICK-OFF / RESTOBOOK MODULE
+// ==========================================
+
+model Base_table {
+  id        Int            @id @default(autoincrement())
+  number    Int            @unique
+  capacity  Int
+  status    String         @default("available") // available, occupied, reserved
+  active    Boolean        @default(true)
+  bookings  Base_booking[]
+}
+
+model Base_booking {
+  id        Int       @id @default(autoincrement())
+  date      DateTime
+  userId    Int
+  tableId   Int
+  user      Base_user  @relation(fields: [userId], references: [id])
+  table     Base_table @relation(fields: [tableId], references: [id])
+  createdAt DateTime   @default(now())
+}
+
 model courts {
   id            Int             @id @default(autoincrement())
   name          String

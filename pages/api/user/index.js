@@ -10,6 +10,11 @@ import { pick } from 'lodash';
 import { randomBytes } from 'crypto';
 import { hash } from '@lib/hash';
 
+// --- NUEVAS IMPORTACIONES PARA EL TALLER ---
+import { getRedisClient } from '../../../lib/redis-backend'; 
+import { mailQueue } from '../../../lib/mail-queue';     // La cola que creamos
+// -------------------------------------------
+
 const parseName = (firstName, lastName) => {
   return [firstName, lastName].filter(Boolean).join(' ').trim();
 };
@@ -45,8 +50,6 @@ const parseRoles = (roles) => {
   };
 };
 
-/** Retorna un objeto con los datos transformados a los formatos requeridos por
- * la base de datos */
 const parseData = (data, email) => {
   const now = new Date();
   return {
@@ -63,7 +66,6 @@ const parseData = (data, email) => {
   };
 };
 
-/** Retorna un objeto con datos válidos para la tabla `person` */
 const upsertPerson = async (prisma, data) => {
   return await prisma.person.where({ dni: data.dni }).upsert({
     ...pick(data, ['dni', 'mobile', 'name', 'firstName', 'lastName']),
@@ -71,7 +73,6 @@ const upsertPerson = async (prisma, data) => {
   });
 };
 
-/** Retorna un objeto con datos válidos para la tabla `user` */
 const upsertUser = async (prisma, data, person, email, userId) => {
   const userData = {
     ...pick(data, [
@@ -86,9 +87,7 @@ const upsertUser = async (prisma, data, person, email, userId) => {
 
   let user;
   if (userId) {
-    // Update existing user
     user = await prisma.user.record(userId).update(userData);
-    // Sync roles: deactivate all existing, then create new ones
     await prisma.base_rolesOnUsers.where({ userId }).update({ active: false });
     const roleIds = normalizeRoleIds(data.roles);
     if (roleIds && roleIds.length > 0) {
@@ -97,14 +96,12 @@ const upsertUser = async (prisma, data, person, email, userId) => {
       });
     }
   } else {
-    // Create new user
     user = await prisma.user.create({
       ...userData,
       ...pick(data, ['createdDate']),
       roles: parseRoles(data.roles),
     });
   }
-
   return user;
 };
 
@@ -115,20 +112,35 @@ handler
   .use(api)
   .use(access('user'))
   .use(database(UserData))
-  .get((request) => {
-    request.do('read', async (api, prisma) => {
+  .get(async (request) => {
+    // --- PUNTO B: CACHÉ CON REDIS ---
+    const redis = await getRedisClient();
+    const cacheKey = 'users:all_list';
+    
+    const cachedUsers = await redis.get(cacheKey);
+    if (cachedUsers) {
+      console.log('⚡ [REDIS] PUNTO B: Sirviendo lista desde caché');
+      return request.api.successMany(JSON.parse(cachedUsers));
+    }
+
+    await request.do('read', async (api, prisma) => {
       const db = prisma.user;
       const where = {};
       if (request.user.id !== 1) where.NOT = { id: 1 };
       db.where(where);
-      return api.successMany(await db.getAll());
+      const users = await db.getAll();
+      
+      // Guardamos en caché por 60 segundos
+      await redis.set(cacheKey, JSON.stringify(users), { EX: 60 });
+      console.log('📦 [POSTGRES] PUNTO B: Guardando nueva caché en Redis');
+      
+      return api.successMany(users);
     });
   })
   .use(database(PersonData))
-  //#FIXME: fields as 'roles' can't be escaped, instead they always have to be overwritten
   .use(parser.escape(ESCAPE))
-  .post((request) => {
-    request.do(
+  .post(async (request) => {
+    await request.do(
       'create',
       async (api, prisma) => {
         let data = request.body;
@@ -137,6 +149,18 @@ handler
         data = parseData(data, email);
         const person = await upsertPerson(prisma, data);
         const user = await upsertUser(prisma, data, person, email);
+
+        // --- PUNTO D: BULLMQ (TAREA EN SEGUNDO PLANO) ---
+        await mailQueue.add('welcomeEmail', {
+          email: user.email,
+          username: user.username
+        });
+        console.log('👷 [BULLMQ] PUNTO D: Tarea de correo encolada');
+        
+        // Limpiamos la caché porque hay un usuario nuevo
+        const redis = await getRedisClient();
+        await redis.del('users:all_list');
+
         return api.success(user);
       },
       { transaction: true },
@@ -148,11 +172,14 @@ handler
       async (api, prisma) => {
         const userId = request.query.id;
         let data = request.body;
-        console.log('PUT user data:', data);
         const email = resolveEmail(data);
         data = parseData(data, email);
         const person = await upsertPerson(prisma, data);
         const user = await upsertUser(prisma, data, person, email, userId);
+        
+        // Limpiamos caché al actualizar
+        getRedisClient().then(client => client.del('users:all_list'));
+
         return api.success(user);
       },
       { transaction: true },

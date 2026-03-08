@@ -17,7 +17,7 @@ export default function MyApp(props) {
   return (
     <React.Fragment>
       <Head>
-        <title>Kick Off</title>
+        <title>Restobook</title>
         <meta
           name="viewport"
           content="minimum-scale=1, initial-scale=1.0, width=device-width, height=device-height"

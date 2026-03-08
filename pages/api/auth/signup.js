@@ -1,10 +1,11 @@
 import nextConnect from 'next-connect';
 import auth from '@middleware/auth';
 import { userHelper } from '@helper/user';
+import { PrismaClient } from '@prisma/client';
 
 const handler = nextConnect();
 
-handler.use(auth).post(async (request, response) => {
+handler.post(async (request, response) => {
   try {
     const { dni, firstName, lastName, email, username, password, mobile } =
       request.body;
@@ -27,6 +28,19 @@ handler.use(auth).post(async (request, response) => {
       password,
       mobile,
     });
+
+    // Asignar rol de usuario por defecto
+    const prisma = new PrismaClient();
+    try {
+      const role = await prisma.base_role.findFirst({ where: { code: 'user' } });
+      if (role) {
+        await prisma.base_rolesOnUsers.create({
+          data: { roleId: role.id, userId: userData.user.id, active: true },
+        });
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
 
     response.status(201).json({
       message: 'Usuario creado exitosamente',

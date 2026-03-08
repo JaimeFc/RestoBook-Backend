@@ -35,8 +35,8 @@ const SignupPage = () => {
 
   return (
     <Row justify="center" align="middle" style={{ minHeight: '100vh' }}>
-      <Col xs={22} sm={18} md={12} lg={8} xl={6}>
-        <Card>
+      <Col xs={24} sm={18} md={12} lg={8} xl={24}>
+        <Card bodyStyle={{ padding: '40px' }}>
           <Title level={2} style={{ textAlign: 'center', marginBottom: 24 }}>
             Registro de Usuario
           </Title>
@@ -145,6 +145,7 @@ const SignupPage = () => {
                 loading={loading}
                 block
                 size="large"
+                style={{ color: 'white' }}
               >
                 Registrarse
               </Button>

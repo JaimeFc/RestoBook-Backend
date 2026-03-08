@@ -1,6 +1,7 @@
 import Forbidden from '@ui/common/Forbidden';
 import DataList from '@ui/common/DataList';
 import { selector } from '@redux/reducers/accessSlice';
+import { selectRoles } from '@redux/reducers/rolesSlice';
 import { useSelector } from 'react-redux';
 import { userService } from '@services/user.service';
 import { sortHandler, filterHandler } from '@helper/filtering/base/user';
@@ -15,8 +16,11 @@ const SEARCH = filterList([
 
 const UsersList = ({ where }) => {
   const access = useSelector(selector.access.user);
+  const roles = useSelector(selectRoles);
 
-  if (!access.read) return <Forbidden />;
+  const isAdmin = roles?.some(role => role.code === 'admin');
+
+  if (!access.read || !isAdmin) return <Forbidden />;
 
   return (
     <DataList

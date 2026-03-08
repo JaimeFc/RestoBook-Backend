@@ -64,7 +64,7 @@ const Signin = () => {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
-      <Layout signin={false}>
+      <Layout signin={false} signup={true}>
         <div style={{ width: '100%', maxWidth: 360, marginBottom: 16 }}>
           <TextField
             control={control}
@@ -74,7 +74,7 @@ const Signin = () => {
             errors={errors.username}
           />
         </div>
-        <div style={{ width: '100%', maxWidth: 360, marginBottom: 16 }}>
+        <div style={{ width: '100%', maxWidth: 450, marginBottom: 16 }}>
           <TextField
             control={control}
             id="password"
@@ -84,7 +84,7 @@ const Signin = () => {
             errors={errors.password}
           />
         </div>
-        <div style={{ width: '100%', maxWidth: 360, paddingTop: 18 }}>
+        <div style={{ width: '100%', maxWidth: 450, paddingTop: 18 }}>
           <Button
             type="primary"
             htmlType="submit"
@@ -95,8 +95,9 @@ const Signin = () => {
             style={{
               height: 44,
               fontWeight: 600,
-              background: '#2b6cb0',
-              borderColor: '#2b6cb0',
+              background: '#2d65a0',
+              borderColor: '#2b6eb6',
+              color: 'white',
             }}
           >
             Iniciar Sesión

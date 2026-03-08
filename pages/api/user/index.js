@@ -72,19 +72,40 @@ const upsertPerson = async (prisma, data) => {
 };
 
 /** Retorna un objeto con datos válidos para la tabla `user` */
-const upsertUser = async (prisma, data, person, email) => {
-  return await prisma.user.create({
+const upsertUser = async (prisma, data, person, email, userId) => {
+  const userData = {
     ...pick(data, [
-      'createdDate',
       'modifiedDate',
       'password',
       'email',
       'accountTypeId',
     ]),
     username: email,
-    roles: parseRoles(data.roles),
     personId: person.id,
-  });
+  };
+
+  let user;
+  if (userId) {
+    // Update existing user
+    user = await prisma.user.record(userId).update(userData);
+    // Sync roles: deactivate all existing, then create new ones
+    await prisma.base_rolesOnUsers.where({ userId }).update({ active: false });
+    const roleIds = normalizeRoleIds(data.roles);
+    if (roleIds && roleIds.length > 0) {
+      await prisma.base_rolesOnUsers.createMany({
+        data: roleIds.map(roleId => ({ roleId, userId, active: true })),
+      });
+    }
+  } else {
+    // Create new user
+    user = await prisma.user.create({
+      ...userData,
+      ...pick(data, ['createdDate']),
+      roles: parseRoles(data.roles),
+    });
+  }
+
+  return user;
 };
 
 const handler = nextConnect();
@@ -116,6 +137,22 @@ handler
         data = parseData(data, email);
         const person = await upsertPerson(prisma, data);
         const user = await upsertUser(prisma, data, person, email);
+        return api.success(user);
+      },
+      { transaction: true },
+    );
+  })
+  .put((request) => {
+    request.do(
+      'write',
+      async (api, prisma) => {
+        const userId = request.query.id;
+        let data = request.body;
+        console.log('PUT user data:', data);
+        const email = resolveEmail(data);
+        data = parseData(data, email);
+        const person = await upsertPerson(prisma, data);
+        const user = await upsertUser(prisma, data, person, email, userId);
         return api.success(user);
       },
       { transaction: true },

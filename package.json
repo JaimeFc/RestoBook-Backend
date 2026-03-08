@@ -1,10 +1,10 @@
 {
-  "name": "kick-off-v2",
+  "name": "restobook",
   "version": "1.0.0",
-  "description": "Kick Off V2 Application",
+  "description": "Restobook Application",
   "main": "index.js",
   "repository": "https://github.com/wpleonesz/kick-off-v2.git",
-  "author": "Kick Off V2 Team",
+  "author": "Restobook Team",
   "license": "MIT",
   "scripts": {
     "dev": "next dev",

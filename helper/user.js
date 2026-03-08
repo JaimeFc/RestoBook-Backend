@@ -28,6 +28,7 @@ const login = async (username, password) => {
     name: user.Person?.name || user.username,
     dni: user.Person?.dni,
     email: user.email,
+    roles: user.roles,
   };
 };
 

@@ -60,11 +60,11 @@ const Dashboard = (props) => {
 
   const getCompanyName = () => {
     const name = user?.Institution?.name;
-    return (name || 'Kick Off').toUpperCase();
+    return (name || 'Restobook').toUpperCase();
   };
 
   const getCompanyIsologo = () => {
-    return user?.Institution?.logo;
+    return user?.Institution?.logo || 'https://img.icons8.com/?size=100&id=51071&format=png&color=8B4513';
   };
 
   if (loading) return <></>;
@@ -76,7 +76,7 @@ const Dashboard = (props) => {
         {open && (
           <Text
             style={{
-              color: 'rgba(0, 0, 0, 0.85)',
+              color: '#5d2e0a',
               fontWeight: 600,
               fontSize: 16,
               textAlign: 'center',
@@ -97,13 +97,19 @@ const Dashboard = (props) => {
       style={{
         minHeight: '100vh',
         background: '#f8fafc',
-        '--dashboard-header':
-          'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+        '--dashboard-header': 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)',
         '--dashboard-bg': '#f8fafc',
         '--sidebar-bg': '#ffffff',
       }}
     >
-      <AppBar open={open}>
+      {/* SE AGREGÓ EL STYLE DIRECTO PARA FORZAR EL COLOR SOBRE EL AZUL */}
+      <AppBar 
+        open={open} 
+        style={{ 
+          background: 'linear-gradient(135deg, #c06320 0%, #944305 100%)',
+          borderBottom: 'none'
+        }}
+      >
         <Space
           style={{
             width: '100%',
@@ -134,7 +140,7 @@ const Dashboard = (props) => {
               }}
             />
             <Text style={{ color: 'white', fontWeight: 600, fontSize: 16 }}>
-              Sistema de Gestión - Kick Off
+              Sistema de Gestión - RestoBook
             </Text>
           </Space>
           <UserSettingMenu user={user} />
@@ -149,7 +155,7 @@ const Dashboard = (props) => {
           width={drawerWidth}
           styles={{
             header: {
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+              background: 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)',
               borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
             },
             body: {
@@ -184,7 +190,7 @@ const Dashboard = (props) => {
               height: '100%',
               overflow: 'auto',
               scrollbarWidth: 'thin',
-              scrollbarColor: '#cbd5e1 transparent',
+              scrollbarColor: '#8b4513 transparent',
             }}
           >
             {siderContent}

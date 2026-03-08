@@ -13,6 +13,10 @@ const create = (params) => {
   return httpRequest.post('/api/user', params);
 };
 
+const signup = (params) => {
+  return httpRequest.post('/api/auth/signup', params);
+};
+
 const update = (id, params, record) => {
   return httpRequest.put(`/api/user/${id}`, params, record);
 };
@@ -69,10 +73,6 @@ const getActive = () => {
 
 const rolesBooleans = () => {
   return httpRequest.get('/api/user/roles/admin/');
-};
-
-const signup = (params) => {
-  return httpRequest.post('/api/auth/signup', params);
 };
 
 export const userService = {

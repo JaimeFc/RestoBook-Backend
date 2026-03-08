@@ -1,5 +1,6 @@
-import { Row, Col, Typography } from 'antd';
+import { Row, Col, Typography, Button } from 'antd';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import styled from 'styled-components';
 
 const { Title, Text } = Typography;
@@ -87,7 +88,7 @@ const FormContainer = styled(Col)`
   border-radius: 18px;
   box-shadow: var(--shadow);
   border: 1px solid rgba(43, 108, 176, 0.12);
-  max-width: 420px;
+  max-width: 500px;
   width: 100%;
   justify-self: end;
 
@@ -186,9 +187,12 @@ const Signin = ({
   subtitle,
   signin = true,
   forgot = true,
+  signup = true,
 }) => {
+  const router = useRouter();
+  const isSigninPage = router.pathname === '/auth/signin';
   const currentYear = new Date().getFullYear();
-  const brandName = institution || 'Kick Off';
+  const brandName = institution || 'RestoBook';
 
   return (
     <Wrap>
@@ -206,7 +210,7 @@ const Signin = ({
                 }}
               >
                 <img
-                  src={logo || '/assets/images/react.png'}
+                  src={logo || 'https://img.icons8.com/?size=100&id=51071&format=png&color=000000'}
                   alt="kick-off-logo"
                   style={{
                     maxWidth: '100%',
@@ -217,24 +221,39 @@ const Signin = ({
                   }}
                 />
               </div>
-              <LogoBadge>Reservas</LogoBadge>
+              <LogoBadge>Reservas_Go</LogoBadge>
             </LogoRow>
             <BrandTitle level={1}>{brandName}</BrandTitle>
             <BrandText>
-              Agenda canchas de futbol sala en minutos. Administra horarios,
-              pagos y confirmaciones con una sola plataforma.
+              Reserva tu mesa favorita en segundos. Gestiona horarios, menús y confirmaciones en una sola plataforma.
             </BrandText>
             {subtitle && <BrandText>{subtitle}</BrandText>}
           </LogoContainer>
 
           <FormContainer>
-            <FormTitle level={4}>Inicia sesion</FormTitle>
+            <FormTitle level={4}>Inicia sesión</FormTitle>
             <FormSubtitle>
               Accede a tu cuenta para gestionar reservas.
             </FormSubtitle>
             <ChildrenContainer>{children}</ChildrenContainer>
 
             <LinksContainer>
+              {isSigninPage && (
+                <Col span={24} style={{ marginBottom: 8, textAlign: 'center' }}>
+                  <span style={{ color: 'var(--muted)', fontSize: '14px' }}>
+                    ¿No tienes una cuenta?{' '}
+                    {signup && (
+                      <Button
+                        type="link"
+                        onClick={() => router.push('/auth/signup')}
+                        style={{ padding: 0, color: 'var(--brand)', fontWeight: 600 }}
+                      >
+                        Regístrate
+                      </Button>
+                    )}
+                  </span>
+                </Col>
+              )}
               <Col span={12} style={{ textAlign: 'left' }}>
                 {signin && (
                   <Link href="/auth/signin" passHref legacyBehavior>
@@ -259,7 +278,7 @@ const Signin = ({
         </Container>
       </Main>
       <CopyrightContainer>
-        Copyright © Kick Off {currentYear}
+        Copyright © RestoBook {currentYear}
       </CopyrightContainer>
     </Wrap>
   );

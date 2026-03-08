@@ -56,7 +56,7 @@ const Logo = ({ logo, collapsed }) => {
         >
           <img
             src={logo || '/assets/images/react.png'}
-            alt="Kick Off"
+            alt="Restobook"
             style={{
               maxWidth: '100%',
               maxHeight: '100%',

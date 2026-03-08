@@ -1,520 +1,182 @@
-import { Row, Col, Card, Typography, Space, Avatar, Progress } from 'antd';
-import {
+import { Row, Col, Card, Typography, Space, Avatar, Modal, Statistic, Divider } from 'antd';
+import { 
+  CloudOutlined, 
+  EnvironmentOutlined, 
+  DashboardOutlined, 
   CalendarOutlined,
-  TrophyOutlined,
-  TeamOutlined,
-  FieldTimeOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  RiseOutlined,
   UserOutlined,
+  ShopOutlined, // Para Mesas
+  TeamOutlined, // Para Clientes
+  PieChartOutlined, // Para Ocupación
+  CoffeeOutlined, // Icono extra gourmet
+  InfoCircleOutlined
 } from '@ant-design/icons';
 import Dashboard from '@ui/layout/Dashboard';
 import Loading from '@ui/common/Loading';
 import DashboardList from '@ui/common/Dashboard/List';
 import { useState, useEffect, useCallback } from 'react';
-import { useSnackbar } from 'notistack';
-import { snackbar } from '@lib/snackbar';
 import { authService } from '@services/auth.service';
 
 const { Title, Text } = Typography;
 
-const StatCard = ({ title, value, icon, gradient, subtitle, trend }) => (
+const StatCard = ({ title, value, icon, gradient, subtitle, onClick, loading }) => (
   <Card
     bordered={false}
+    onClick={onClick}
     style={{
       borderRadius: 24,
-      background: gradient,
-      boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)',
+      background: gradient, // Aquí aplicamos los nuevos colores terrosos
+      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)',
       height: '100%',
-      overflow: 'hidden',
-      position: 'relative',
-      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-      cursor: 'pointer',
+      cursor: onClick ? 'pointer' : 'default',
     }}
-    hoverable
-    onMouseEnter={(e) => {
-      e.currentTarget.style.transform = 'translateY(-8px)';
-      e.currentTarget.style.boxShadow = '0 16px 48px rgba(0, 0, 0, 0.2)';
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.transform = 'translateY(0)';
-      e.currentTarget.style.boxShadow = '0 12px 40px rgba(0, 0, 0, 0.15)';
-    }}
+    hoverable={!!onClick}
   >
-    <div style={{ position: 'relative', zIndex: 1 }}>
-      <Space direction="vertical" size={14} style={{ width: '100%' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-          }}
-        >
-          <div>
-            <Text
-              style={{
-                color: 'rgba(255, 255, 255, 0.92)',
-                fontSize: 14,
-                fontWeight: 600,
-                display: 'block',
-                letterSpacing: 0.3,
-              }}
-            >
-              {title}
-            </Text>
-            <Title
-              level={2}
-              style={{
-                color: '#fff',
-                margin: '10px 0 0 0',
-                fontSize: 40,
-                fontWeight: 800,
-                textShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-              }}
-            >
-              {value}
-            </Title>
-            {subtitle && (
-              <Text
-                style={{
-                  color: 'rgba(255, 255, 255, 0.88)',
-                  fontSize: 13,
-                  fontWeight: 500,
-                }}
-              >
-                {subtitle}
-              </Text>
-            )}
-          </div>
-          <Avatar
-            size={64}
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.22)',
-              backdropFilter: 'blur(12px)',
-              border: '2px solid rgba(255, 255, 255, 0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
-            }}
-            icon={icon}
-          />
-        </div>
-        {trend && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '8px 12px',
-              background: 'rgba(255, 255, 255, 0.15)',
-              borderRadius: 12,
-              backdropFilter: 'blur(10px)',
-            }}
-          >
-            <RiseOutlined
-              style={{ color: '#4ade80', fontSize: 16, fontWeight: 'bold' }}
-            />
-            <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: 700 }}>
-              {trend}
-            </Text>
-            <Text style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 13 }}>
-              vs. mes anterior
-            </Text>
-          </div>
-        )}
-      </Space>
+    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <div>
+        <Text style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 13, fontWeight: 500 }}>{title}</Text>
+        <Title level={2} style={{ color: '#fff', margin: '4px 0', fontSize: 28 }}>
+          {loading ? '--' : value}
+        </Title>
+        <Text style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: 12 }}>{subtitle}</Text>
+      </div>
+      <Avatar size={50} style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)' }} icon={icon} />
     </div>
-    <div
-      style={{
-        position: 'absolute',
-        bottom: -30,
-        right: -30,
-        width: 150,
-        height: 150,
-        background: 'rgba(255, 255, 255, 0.08)',
-        borderRadius: '50%',
-        zIndex: 0,
-      }}
-    />
-    <div
-      style={{
-        position: 'absolute',
-        top: -20,
-        left: -20,
-        width: 100,
-        height: 100,
-        background: 'rgba(255, 255, 255, 0.05)',
-        borderRadius: '50%',
-        zIndex: 0,
-      }}
-    />
   </Card>
 );
 
 const Home = () => {
   const [user, setUser] = useState({});
   const [loading, setLoading] = useState(true);
-  const { enqueueSnackbar } = useSnackbar();
+  const [weather, setWeather] = useState(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadData = useCallback(async () => {
     try {
-      setUser(await authService.user());
-    } catch (error) {
-      snackbar.error(enqueueSnackbar, error);
+      const userData = await authService.user();
+      setUser(userData);
+
+      // Tu API de clima
+      const res = await fetch('/api/weather?city=Quito', {
+        headers: { 'x-resto-token': 'RestoBook2026' } 
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWeather(data);
+      }
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [enqueueSnackbar]);
+  }, []);
 
-  useEffect(() => load(), [load]);
+  useEffect(() => { loadData(); }, [loadData]);
 
   if (loading) return <Loading />;
 
-  const currentHour = new Date().getHours();
-  const greeting =
-    currentHour < 12
-      ? 'Buenos días'
-      : currentHour < 18
-      ? 'Buenas tardes'
-      : 'Buenas noches';
-
-  const currentDate = new Date().toLocaleDateString('es-ES', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-
   return (
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
-      <Card
-        bordered={false}
-        style={{
-          borderRadius: 24,
-          background:
-            'linear-gradient(135deg, #0ea5e9 0%, #2563eb 50%, #7c3aed 100%)',
-          boxShadow: '0 16px 56px rgba(37, 99, 235, 0.3)',
-          overflow: 'hidden',
-          position: 'relative',
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            top: -50,
-            right: -50,
-            width: 250,
-            height: 250,
-            background: 'rgba(255, 255, 255, 0.08)',
-            borderRadius: '50%',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            bottom: -30,
-            left: -30,
-            width: 180,
-            height: 180,
-            background: 'rgba(255, 255, 255, 0.05)',
-            borderRadius: '50%',
-          }}
-        />
-        <Row
-          align="middle"
-          justify="space-between"
-          style={{ position: 'relative', zIndex: 1 }}
-        >
-          <Col xs={24} lg={18}>
-            <Space direction="vertical" size={8}>
-              <Space align="center" size={16}>
-                <Avatar
-                  size={72}
-                  style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.28)',
-                    backdropFilter: 'blur(12px)',
-                    border: '3px solid rgba(255, 255, 255, 0.35)',
-                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
-                  }}
-                  icon={<UserOutlined style={{ fontSize: 36 }} />}
-                />
-                <div>
-                  <Title
-                    level={1}
-                    style={{
-                      color: '#fff',
-                      margin: 0,
-                      fontSize: 38,
-                      fontWeight: 800,
-                      textShadow: '0 2px 12px rgba(0, 0, 0, 0.15)',
-                    }}
-                  >
-                    {greeting}, {user?.Person?.firstName || 'Usuario'}
-                  </Title>
-                  <Text
-                    style={{
-                      color: 'rgba(255, 255, 255, 0.9)',
-                      fontSize: 16,
-                      display: 'block',
-                      marginTop: 4,
-                    }}
-                  >
-                    Sistema de Gestión de Canchas de Fútbol Sala
-                  </Text>
-                  <Text
-                    style={{
-                      color: 'rgba(255, 255, 255, 0.75)',
-                      fontSize: 14,
-                      display: 'block',
-                      marginTop: 2,
-                      textTransform: 'capitalize',
-                    }}
-                  >
-                    {currentDate}
-                  </Text>
-                </div>
-              </Space>
-            </Space>
-          </Col>
-          <Col xs={0} lg={6} style={{ textAlign: 'right' }}>
-            <TrophyOutlined
-              style={{ fontSize: 80, color: 'rgba(255, 255, 255, 0.25)' }}
-            />
-          </Col>
-        </Row>
+      {/* BANNER PRINCIPAL: Terracotta/Espresso */}
+      <Card bordered={false} style={{ borderRadius: 24, background: 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)' }}>
+        <Title level={2} style={{ color: '#fff', margin: 0 }}>
+          ¡Buenas noches, {user?.Person?.firstName || 'ADMINISTRADOR'}!
+        </Title>
+        <Text style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+          Sistema de Gestión de Reservas - RestoBook
+        </Text>
       </Card>
 
-      <Row gutter={[20, 20]}>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            title="Reservas Hoy"
-            value="24"
-            subtitle="8 pendientes"
-            icon={<CalendarOutlined style={{ fontSize: 28, color: '#fff' }} />}
-            gradient="linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)"
-            trend="+12%"
+      <Row gutter={[16, 16]}>
+        {/* RESERVAS: Terracotta */}
+        <Col xs={24} sm={12} lg={5}>
+          <StatCard 
+            title="Reservas Hoy" 
+            value="35" 
+            subtitle="12 pendientes" 
+            gradient="linear-gradient(135deg, #d2691e 0%, #a0522d 100%)" 
+            icon={<CalendarOutlined />} 
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            title="Canchas Disponibles"
-            value="3/5"
-            subtitle="2 en uso ahora"
-            icon={<FieldTimeOutlined style={{ fontSize: 28, color: '#fff' }} />}
-            gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)"
+
+        {/* MESAS: Verde Olivo (Antes era Canchas) */}
+        <Col xs={24} sm={12} lg={5}>
+          <StatCard 
+            title="Mesas Disponibles" 
+            value="18/25" 
+            subtitle="7 ocupadas" 
+            gradient="linear-gradient(135deg, #6b8e23 0%, #556b2f 100%)" 
+            icon={<ShopOutlined />} 
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        
+        {/* CLIMA: Teal Apagado */}
+        <Col xs={24} sm={12} lg={4}>
           <StatCard
-            title="Clientes Activos"
-            value="156"
-            subtitle="Este mes"
-            icon={<TeamOutlined style={{ fontSize: 28, color: '#fff' }} />}
-            gradient="linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)"
-            trend="+8%"
+            title="Estado del Clima"
+            value={weather ? `${weather.temperatura}°C` : '--'}
+            subtitle={weather ? weather.descripcion : 'Obteniendo datos...'}
+            gradient="linear-gradient(135deg, #5f9ea0 0%, #4682b4 100%)"
+            icon={weather ? <img src={weather.icono} width="35" /> : <CloudOutlined />}
+            onClick={() => weather && setIsModalVisible(true)}
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            title="Ocupación"
-            value="78%"
-            subtitle="Promedio semanal"
-            icon={
-              <CheckCircleOutlined style={{ fontSize: 28, color: '#fff' }} />
-            }
-            gradient="linear-gradient(135deg, #ec4899 0%, #d946ef 100%)"
-            trend="+15%"
+
+        {/* CLIENTES: Plum/Morado */}
+        <Col xs={24} sm={12} lg={5}>
+          <StatCard 
+            title="Nuevos Clientes" 
+            value="22" 
+            subtitle="Este mes" 
+            gradient="linear-gradient(135deg, #800080 0%, #4b0082 100%)" 
+            icon={<TeamOutlined />} 
+          />
+        </Col>
+
+        {/* OCUPACIÓN: Rosa Polvoriento */}
+        <Col xs={24} sm={12} lg={5}>
+          <StatCard 
+            title="Ocupación" 
+            value="72%" 
+            subtitle="Promedio semanal" 
+            gradient="linear-gradient(135deg, #db7093 0%, #c71585 100%)" 
+            icon={<PieChartOutlined />} 
           />
         </Col>
       </Row>
 
-      <Row gutter={[24, 24]}>
-        <Col xs={24} lg={16}>
-          <Card
-            bordered={false}
-            style={{
-              borderRadius: 24,
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
-              border: '1px solid #f1f5f9',
-              transition: 'all 0.3s ease',
-            }}
-            hoverable
-          >
-            <Space direction="vertical" size={24} style={{ width: '100%' }}>
-              <div>
-                <Title
-                  level={3}
-                  style={{
-                    marginBottom: 6,
-                    color: '#1f2937',
-                    fontSize: 24,
-                    fontWeight: 700,
-                  }}
-                >
-                  Accesos Rápidos
-                </Title>
-                <Text
-                  type="secondary"
-                  style={{ fontSize: 15, fontWeight: 500 }}
-                >
-                  Gestiona reservas, canchas y configuración del sistema
-                </Text>
-              </div>
-              <DashboardList menuCode="admhead" />
-            </Space>
-          </Card>
-        </Col>
+      <Card title="Panel de Gestión" bordered={false} style={{ borderRadius: 24 }}>
+        <DashboardList menuCode="admhead" />
+      </Card>
 
-        <Col xs={24} lg={8}>
-          <Space direction="vertical" size={24} style={{ width: '100%' }}>
-            <Card
-              bordered={false}
-              style={{
-                borderRadius: 24,
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
-                border: '1px solid #f1f5f9',
-                transition: 'all 0.3s ease',
-              }}
-              hoverable
-            >
-              <Space direction="vertical" size={20} style={{ width: '100%' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <Avatar
-                    size={88}
-                    style={{
-                      background:
-                        'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      border: '4px solid #f3f4f6',
-                      boxShadow: '0 8px 24px rgba(102, 126, 234, 0.25)',
-                    }}
-                    icon={<UserOutlined style={{ fontSize: 44 }} />}
-                  />
-                  <Title
-                    level={4}
-                    style={{
-                      marginTop: 16,
-                      marginBottom: 6,
-                      color: '#1f2937',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {user?.Person?.firstName} {user?.Person?.lastName}
-                  </Title>
-                  <Text
-                    type="secondary"
-                    style={{ fontSize: 14, fontWeight: 500 }}
-                  >
-                    {user?.email}
-                  </Text>
-                  <div
-                    style={{
-                      marginTop: 20,
-                      padding: '14px 18px',
-                      background:
-                        'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-                      borderRadius: 14,
-                      border: '1px solid #bbf7d0',
-                    }}
-                  >
-                    <Text
-                      strong
-                      style={{
-                        color: '#059669',
-                        fontSize: 14,
-                        fontWeight: 600,
-                      }}
-                    >
-                      Administrador del Sistema
-                    </Text>
-                  </div>
-                </div>
-              </Space>
-            </Card>
-
-            <Card
-              bordered={false}
-              style={{
-                borderRadius: 24,
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
-                border: '1px solid #f1f5f9',
-                transition: 'all 0.3s ease',
-              }}
-              hoverable
-            >
-              <Space direction="vertical" size={20} style={{ width: '100%' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text
-                    strong
-                    style={{ color: '#1f2937', fontSize: 16, fontWeight: 700 }}
-                  >
-                    Actividad Hoy
-                  </Text>
-                  <ClockCircleOutlined
-                    style={{ fontSize: 20, color: '#0ea5e9' }}
-                  />
-                </div>
-                <div>
-                  <div style={{ marginBottom: 12 }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Text style={{ fontSize: 13, color: '#6b7280' }}>
-                        Reservas confirmadas
-                      </Text>
-                      <Text strong style={{ fontSize: 13, color: '#1f2937' }}>
-                        16/24
-                      </Text>
-                    </div>
-                    <Progress
-                      percent={67}
-                      strokeColor="#10b981"
-                      showInfo={false}
-                    />
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Text style={{ fontSize: 13, color: '#6b7280' }}>
-                        Capacidad utilizada
-                      </Text>
-                      <Text strong style={{ fontSize: 13, color: '#1f2937' }}>
-                        78%
-                      </Text>
-                    </div>
-                    <Progress
-                      percent={78}
-                      strokeColor="#f59e0b"
-                      showInfo={false}
-                    />
-                  </div>
-                </div>
-              </Space>
-            </Card>
-          </Space>
-        </Col>
-      </Row>
+      {/* MODAL DETALLADO */}
+      <Modal
+        title={<Space><EnvironmentOutlined /> Pronóstico RestoBook</Space>}
+        open={isModalVisible}
+        onCancel={() => setIsModalVisible(false)}
+        footer={null}
+        centered
+      >
+        {weather && (
+          <div style={{ textAlign: 'center' }}>
+            <img src={weather.icono} width="100" />
+            <Statistic value={weather.temperatura} suffix="°C" />
+            <Text strong style={{ textTransform: 'capitalize' }}>{weather.descripcion}</Text>
+            <Divider />
+            <Row gutter={16}>
+              <Col span={12}>
+                <Statistic title="Humedad" value={weather.humedad} suffix="%" prefix={<DashboardOutlined />} />
+              </Col>
+              <Col span={12}>
+                <Statistic title="Viento" value={weather.viento} suffix=" m/s" prefix={<InfoCircleOutlined />} />
+              </Col>
+            </Row>
+          </div>
+        )}
+      </Modal>
     </Space>
   );
 };
 
-Home.propTypes = {};
 Home.Layout = Dashboard;
-
 export default Home;

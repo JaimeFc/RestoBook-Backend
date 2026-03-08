@@ -45,7 +45,7 @@ const UserForm = ({ record }) => {
     resolver,
     defaultValues: defaultValues(record),
   });
-  const { errors, isDirty, dirtyFields } = useFormState({
+  const { errors, isDirty, dirtyFields, isValid } = useFormState({
     control,
   });
 
@@ -133,23 +133,32 @@ const UserForm = ({ record }) => {
 
   const onSubmit = async (data) => {
     if (loading) return;
-    form.submit({
-      recordId: record.id,
-      data,
-      service: userService,
-      router,
-      dirtyFields,
-      enqueueSnackbar,
-      reset,
-      setLoading,
-      defaultHandler: defaultValues,
-    });
+    console.log('onSubmit data:', data);
+    console.log('isValid:', isValid);
+    console.log('errors:', errors);
+    try {
+      form.submit({
+        recordId: record.id,
+        data,
+        service: userService,
+        router,
+        dirtyFields,
+        enqueueSnackbar,
+        reset,
+        setLoading,
+        defaultHandler: defaultValues,
+      });
+    } catch (error) {
+      console.error('Error in onSubmit:', error);
+      snackbar.error(enqueueSnackbar, error);
+    }
   };
 
   return (
     <>
+      {console.log('UserForm render, loading:', loading, 'errors:', errors)}
       {loading && <Loading />}
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form>
         <Paper>
           <Row gutter={[8, 8]}>
             <Col xs={24} sm={18} md={18} lg={20} xl={20}>
@@ -271,10 +280,9 @@ const UserForm = ({ record }) => {
           <Col xs={24} sm={12} md={8} lg={6} xl={6}>
             <Button
               type="primary"
-              htmlType="submit"
               block
-              onClick={handleSubmit(onSubmit)}
-              disabled={loading || !isDirty}
+              disabled={false}
+              onClick={() => { console.log('handleSubmit called'); handleSubmit(onSubmit)(); }}
             >
               Guardar
             </Button>

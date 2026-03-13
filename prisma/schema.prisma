@@ -9,37 +9,36 @@ generator client {
 }
 
 // ==========================================
-// BASE MODULE
+// BASE MODULE (Usuarios y Permisos)
 // ==========================================
 
 model Base_user {
-  id               Int                @id @default(autoincrement())
-  username         String             @unique
-  password         String
-  email            String             @unique
-  createdDate      DateTime           @default(now())
-  lastPasswordDate DateTime?
-  modifiedDate     DateTime           @default(now())
-  active           Boolean            @default(true)
-  Person           Base_person?       @relation(fields: [personId], references: [id])
-  personId         Int?
-  recoverToken     String             @default("")
-  recoverDate      DateTime?
-  roles            Base_rolesOnUsers[]
-  AccountType      Base_parameter?    @relation(fields: [accountTypeId], references: [id])
-  accountTypeId    Int?
-  logs             Audit_log[]
-  courts           courts[]
-  // Relación añadida para RestoBook
-  bookings         Base_booking[]
+  id                Int                @id @default(autoincrement())
+  username          String             @unique
+  password          String
+  email             String             @unique
+  createdDate       DateTime           @default(now())
+  lastPasswordDate  DateTime?
+  modifiedDate      DateTime           @default(now())
+  active            Boolean            @default(true)
+  Person            Base_person?       @relation(fields: [personId], references: [id])
+  personId          Int?
+  recoverToken      String             @default("")
+  recoverDate       DateTime?
+  roles             Base_rolesOnUsers[]
+  AccountType       Base_parameter?    @relation(fields: [accountTypeId], references: [id])
+  accountTypeId     Int?
+  logs              Audit_log[]
+  courts            courts[]
+  bookings          Base_booking[]
 }
 
 model Base_person {
-  id        Int       @id @default(autoincrement())
-  dni       String    @unique
+  id        Int         @id @default(autoincrement())
+  dni       String      @unique
   name      String
   users     Base_user[]
-  email     String?   @unique
+  email     String?     @unique
   photo     String?
   firstName String
   lastName  String
@@ -47,12 +46,12 @@ model Base_person {
 }
 
 model Base_localUserVar {
-  id          Int     @id @default(autoincrement())
-  name        String  @unique @db.VarChar(100)
-  displayName String  @db.VarChar(100)
-  read        Boolean @default(false)
-  write       Boolean @default(false)
-  code        String? @unique
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  displayName String   @db.VarChar(100)
+  read        Boolean  @default(false)
+  write       Boolean  @default(false)
+  code        String?  @unique
 }
 
 model Base_module {
@@ -210,27 +209,52 @@ model Audit_log {
 }
 
 // ==========================================
-// KICK-OFF / RESTOBOOK MODULE
+// KICK-OFF / RESTOBOOK MODULE (ACTUALIZADO)
 // ==========================================
 
+model Base_restaurant {
+  id        Int          @id @default(autoincrement())
+  name      String       // Nombre del restaurante
+  address   String?
+  phone     String?
+  active    Boolean      @default(true)
+  tables    Base_table[]
+  createdAt DateTime     @default(now())
+}
+
 model Base_table {
-  id        Int            @id @default(autoincrement())
-  number    Int            @unique
-  capacity  Int
-  status    String         @default("available") // available, occupied, reserved
-  active    Boolean        @default(true)
-  bookings  Base_booking[]
+  id           Int              @id @default(autoincrement())
+  number       Int              @unique
+  capacity     Int
+  location     String?          // Terraza, Centro, etc.
+  status       String           @default("available") // available, occupied, reserved
+  active       Boolean          @default(true)
+  restaurant   Base_restaurant? @relation(fields: [restaurantId], references: [id])
+  restaurantId Int?
+  bookings     Base_booking[]
 }
 
 model Base_booking {
-  id        Int       @id @default(autoincrement())
-  date      DateTime
-  userId    Int
-  tableId   Int
-  user      Base_user  @relation(fields: [userId], references: [id])
-  table     Base_table @relation(fields: [tableId], references: [id])
-  createdAt DateTime   @default(now())
+  id           Int        @id @default(autoincrement())
+  date         DateTime   // Fecha de la reserva
+  time         String     // Hora de la reserva (ej: "20:00")
+  people       Int        @default(1) // Cantidad de personas
+  status       String     @default("PENDIENTE") // PENDIENTE, CONFIRMADA, FINALIZADA, CANCELADA
+  observations String?    // Notas del cliente
+  
+  // Relaciones
+  userId       Int
+  tableId      Int
+  user         Base_user  @relation(fields: [userId], references: [id])
+  table        Base_table @relation(fields: [tableId], references: [id])
+  
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 }
+
+// ==========================================
+// OTROS (COURTS)
+// ==========================================
 
 model courts {
   id            Int             @id @default(autoincrement())

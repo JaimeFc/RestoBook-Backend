@@ -1,14 +1,12 @@
-import { Row, Col, Card, Typography, Space, Avatar, Modal, Statistic, Divider } from 'antd';
+import { Row, Col, Card, Typography, Space, Avatar, Modal, Statistic, Divider, Spin } from 'antd';
 import { 
   CloudOutlined, 
   EnvironmentOutlined, 
   DashboardOutlined, 
   CalendarOutlined,
-  UserOutlined,
-  ShopOutlined, // Para Mesas
-  TeamOutlined, // Para Clientes
-  PieChartOutlined, // Para Ocupación
-  CoffeeOutlined, // Icono extra gourmet
+  ShopOutlined, 
+  TeamOutlined, 
+  PieChartOutlined, 
   InfoCircleOutlined
 } from '@ant-design/icons';
 import Dashboard from '@ui/layout/Dashboard';
@@ -16,16 +14,18 @@ import Loading from '@ui/common/Loading';
 import DashboardList from '@ui/common/Dashboard/List';
 import { useState, useEffect, useCallback } from 'react';
 import { authService } from '@services/auth.service';
+import { useRouter } from 'next/router';
 
 const { Title, Text } = Typography;
 
+// Componente interno para las tarjetas de estadísticas
 const StatCard = ({ title, value, icon, gradient, subtitle, onClick, loading }) => (
   <Card
     bordered={false}
     onClick={onClick}
     style={{
       borderRadius: 24,
-      background: gradient, // Aquí aplicamos los nuevos colores terrosos
+      background: gradient,
       boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)',
       height: '100%',
       cursor: onClick ? 'pointer' : 'default',
@@ -36,7 +36,7 @@ const StatCard = ({ title, value, icon, gradient, subtitle, onClick, loading }) 
       <div>
         <Text style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 13, fontWeight: 500 }}>{title}</Text>
         <Title level={2} style={{ color: '#fff', margin: '4px 0', fontSize: 28 }}>
-          {loading ? '--' : value}
+          {loading ? <Spin size="small" /> : value}
         </Title>
         <Text style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: 12 }}>{subtitle}</Text>
       </div>
@@ -46,26 +46,50 @@ const StatCard = ({ title, value, icon, gradient, subtitle, onClick, loading }) 
 );
 
 const Home = () => {
+  const router = useRouter();
   const [user, setUser] = useState({});
   const [loading, setLoading] = useState(true);
   const [weather, setWeather] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  
+  const [restaurant, setRestaurant] = useState(null);
+  const [stats, setStats] = useState({ 
+    reservasHoy: 0, 
+    mesasDisponibles: 0, 
+    totalMesas: 0, 
+    ocupacion: 0 
+  });
 
   const loadData = useCallback(async () => {
     try {
+      // 1. Obtener usuario autenticado
       const userData = await authService.user();
       setUser(userData);
 
-      // Tu API de clima
-      const res = await fetch('/api/weather?city=Quito', {
+      // 2. Cargar datos del restaurante configurado
+      const resResto = await fetch('/api/restaurant');
+      if (resResto.ok) {
+        const dataResto = await resResto.json();
+        setRestaurant(dataResto);
+      }
+
+      // 3. Cargar estadísticas reales desde la nueva API que creamos
+      const resStats = await fetch('/api/menu/dashboard/stats');
+      if (resStats.ok) {
+        const dataStats = await resStats.json();
+        setStats(dataStats);
+      }
+
+      // 4. Cargar clima (API interna)
+      const resWeather = await fetch('/api/weather?city=Quito', {
         headers: { 'x-resto-token': 'RestoBook2026' } 
       });
-      if (res.ok) {
-        const data = await res.json();
-        setWeather(data);
+      if (resWeather.ok) {
+        const dataWeather = await resWeather.json();
+        setWeather(dataWeather);
       }
     } catch (e) {
-      console.error(e);
+      console.error("Error cargando Dashboard:", e);
     } finally {
       setLoading(false);
     }
@@ -77,81 +101,87 @@ const Home = () => {
 
   return (
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
-      {/* BANNER PRINCIPAL: Terracotta/Espresso */}
-      <Card bordered={false} style={{ borderRadius: 24, background: 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)' }}>
+      {/* Banner Superior Dinámico */}
+      <Card bordered={false} style={{ 
+        borderRadius: 24, 
+        background: restaurant ? 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)' : 'linear-gradient(135deg, #2c3e50 0%, #000000 100%)' 
+      }}>
         <Title level={2} style={{ color: '#fff', margin: 0 }}>
-          ¡Buenas noches, {user?.Person?.firstName || 'ADMINISTRADOR'}!
+          ¡Bienvenido a {restaurant?.name || 'RestoBook'}, {user?.Person?.firstName || 'Admin'}!
         </Title>
         <Text style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
-          Sistema de Gestión de Reservas - RestoBook
+          {restaurant ? `Gestionando sucursal: ${restaurant.address || 'Sin dirección'}` : 'Configure su restaurante para empezar.'}
         </Text>
       </Card>
 
+      {/* Grid de Estadísticas con Clic Funcional */}
       <Row gutter={[16, 16]}>
-        {/* RESERVAS: Terracotta */}
         <Col xs={24} sm={12} lg={5}>
           <StatCard 
             title="Reservas Hoy" 
-            value="35" 
-            subtitle="12 pendientes" 
+            value={stats.reservasHoy} 
+            subtitle="Ver agenda del día" 
             gradient="linear-gradient(135deg, #d2691e 0%, #a0522d 100%)" 
             icon={<CalendarOutlined />} 
+            onClick={() => router.push('/base/bookings')} // Redirige a Reservas
           />
         </Col>
 
-        {/* MESAS: Verde Olivo (Antes era Canchas) */}
         <Col xs={24} sm={12} lg={5}>
           <StatCard 
             title="Mesas Disponibles" 
-            value="18/25" 
-            subtitle="7 ocupadas" 
+            value={`${stats.mesasDisponibles}/${stats.totalMesas}`} 
+            subtitle="Estado del salón" 
             gradient="linear-gradient(135deg, #6b8e23 0%, #556b2f 100%)" 
             icon={<ShopOutlined />} 
+            onClick={() => router.push('/base/tables')} // Redirige a Mesas
           />
         </Col>
         
-        {/* CLIMA: Teal Apagado */}
         <Col xs={24} sm={12} lg={4}>
           <StatCard
             title="Estado del Clima"
             value={weather ? `${weather.temperatura}°C` : '--'}
-            subtitle={weather ? weather.descripcion : 'Obteniendo datos...'}
+            subtitle={weather ? weather.descripcion : 'Obteniendo...'}
             gradient="linear-gradient(135deg, #5f9ea0 0%, #4682b4 100%)"
-            icon={weather ? <img src={weather.icono} width="35" /> : <CloudOutlined />}
+            icon={weather ? <img src={weather.icono} width="35" alt="icon" /> : <CloudOutlined />}
             onClick={() => weather && setIsModalVisible(true)}
           />
         </Col>
 
-        {/* CLIENTES: Plum/Morado */}
         <Col xs={24} sm={12} lg={5}>
           <StatCard 
             title="Nuevos Clientes" 
-            value="22" 
-            subtitle="Este mes" 
+            value="--" 
+            subtitle="Módulo Usuarios" 
             gradient="linear-gradient(135deg, #800080 0%, #4b0082 100%)" 
             icon={<TeamOutlined />} 
           />
         </Col>
 
-        {/* OCUPACIÓN: Rosa Polvoriento */}
         <Col xs={24} sm={12} lg={5}>
           <StatCard 
             title="Ocupación" 
-            value="72%" 
-            subtitle="Promedio semanal" 
+            value={`${stats.ocupacion}%`} 
+            subtitle="Capacidad utilizada" 
             gradient="linear-gradient(135deg, #db7093 0%, #c71585 100%)" 
             icon={<PieChartOutlined />} 
           />
         </Col>
       </Row>
 
-      <Card title="Panel de Gestión" bordered={false} style={{ borderRadius: 24 }}>
-        <DashboardList menuCode="admhead" />
+      {/* Lista de Accesos Directos */}
+      <Card title="Panel de Gestión de Restaurante" bordered={false} style={{ borderRadius: 24 }}>
+        <Space direction="vertical" style={{ width: '100%' }} size="large">
+            <DashboardList menuCode="admhead" />
+            <DashboardList menuCode="adm-resto" />
+            <DashboardList menuCode="adm-tables" />
+        </Space>
       </Card>
 
-      {/* MODAL DETALLADO */}
+      {/* Modal de Detalle del Clima */}
       <Modal
-        title={<Space><EnvironmentOutlined /> Pronóstico RestoBook</Space>}
+        title={<Space><EnvironmentOutlined /> Pronóstico Detallado</Space>}
         open={isModalVisible}
         onCancel={() => setIsModalVisible(false)}
         footer={null}
@@ -159,7 +189,7 @@ const Home = () => {
       >
         {weather && (
           <div style={{ textAlign: 'center' }}>
-            <img src={weather.icono} width="100" />
+            <img src={weather.icono} width="100" alt="weather" />
             <Statistic value={weather.temperatura} suffix="°C" />
             <Text strong style={{ textTransform: 'capitalize' }}>{weather.descripcion}</Text>
             <Divider />

@@ -1,4 +1,4 @@
-import { Layout, Drawer, Button, Space, Typography } from 'antd';
+import { Layout, Drawer, Button, Space, Typography, Spin } from 'antd';
 import { MenuOutlined } from '@ant-design/icons';
 import UserSettingMenu from '@ui/layout/UserSettingMenu';
 import SidebarList from '@ui/layout/SidebarList';
@@ -23,19 +23,30 @@ const drawerWidth = 260;
 const Dashboard = (props) => {
   const [open, setOpen] = useState(!isMobile);
   const [user, setUser] = useState({});
+  const [restaurantData, setRestaurantData] = useState(null); // Nuevo estado para la DB
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const dispatch = useDispatch();
 
   useEffect(() => {
-    const loadUser = async () => {
+    const loadAllData = async () => {
       try {
-        const user = await authService.public.user();
-        setUser(user);
+        // 1. Cargar Usuario y Permisos
+        const userData = await authService.public.user();
+        setUser(userData);
+        
         const access = await userService.getAccess();
         dispatch(set(access || {}));
+        
         const roles = await userService.roles();
         dispatch(setRoles(roles || {}));
+
+        // 2. Cargar Datos del Restaurante desde nuestra nueva API
+        const res = await fetch('/api/restaurant');
+        if (res.ok) {
+          const restInfo = await res.json();
+          setRestaurantData(restInfo);
+        }
       } catch (error) {
         if (error === 'No autorizado' || error === 'Sesión caducada')
           return await router.replace('/auth/signin');
@@ -43,22 +54,24 @@ const Dashboard = (props) => {
         setLoading(false);
       }
     };
-    loadUser();
+    loadAllData();
   }, [dispatch, router]);
-
-  const handleOpen = () => {
-    isMobile ? setOpen(!open) : null;
-  };
 
   const handleDrawerToggle = () => {
     setOpen(!open);
+  };
+
+  const handleOpen = () => {
+    isMobile ? setOpen(!open) : null;
   };
 
   const handleDrawerClose = () => {
     setOpen(false);
   };
 
+  // Función actualizada para dar prioridad a los datos de la base de datos
   const getCompanyName = () => {
+    if (restaurantData?.name) return restaurantData.name.toUpperCase();
     const name = user?.Institution?.name;
     return (name || 'Restobook').toUpperCase();
   };
@@ -67,7 +80,11 @@ const Dashboard = (props) => {
     return user?.Institution?.logo || 'https://img.icons8.com/?size=100&id=51071&format=png&color=8B4513';
   };
 
-  if (loading) return <></>;
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <Spin size="large" tip="Iniciando sistema..." />
+    </div>
+  );
 
   const siderContent = (
     <>
@@ -102,7 +119,6 @@ const Dashboard = (props) => {
         '--sidebar-bg': '#ffffff',
       }}
     >
-      {/* SE AGREGÓ EL STYLE DIRECTO PARA FORZAR EL COLOR SOBRE EL AZUL */}
       <AppBar 
         open={open} 
         style={{ 
@@ -140,7 +156,8 @@ const Dashboard = (props) => {
               }}
             />
             <Text style={{ color: 'white', fontWeight: 600, fontSize: 16 }}>
-              Sistema de Gestión - RestoBook
+              {/* AQUÍ EL CAMBIO: Ahora usa el nombre real de la DB */}
+              Sistema de Gestión - {restaurantData?.name || 'RestoBook'}
             </Text>
           </Space>
           <UserSettingMenu user={user} />

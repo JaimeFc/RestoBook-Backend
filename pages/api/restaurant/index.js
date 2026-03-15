@@ -8,18 +8,18 @@ export default async function handler(req, res) {
   switch (method) {
     case 'GET':
       try {
-        // Usamos Base_restaurant (con B mayúscula como en tu schema)
-        const restaurant = await prisma.Base_restaurant.findUnique({
-          where: { id: 1 }
-        });
+        // Usamos findFirst en lugar de findUnique por si el ID inicial no es exactamente 1
+        const restaurant = await prisma.Base_restaurant.findFirst();
         
         if (!restaurant) {
-          return res.status(404).json({ message: "Restaurante no configurado" });
+          // Si no hay nada, enviamos un objeto vacío en lugar de un error 404 
+          // para que el formulario no se rompa al cargar
+          return res.status(200).json({ name: '', address: '', phone: '' });
         }
         return res.status(200).json(restaurant);
       } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: "Error al obtener el restaurante" });
+        console.error("Error al obtener restaurante:", error);
+        return res.status(500).json({ error: "Error al obtener los datos" });
       }
 
     case 'POST':
@@ -27,12 +27,15 @@ export default async function handler(req, res) {
         const { name, address, phone } = req.body;
 
         if (!name) {
-          return res.status(400).json({ error: "El nombre del restaurante es obligatorio" });
+          return res.status(400).json({ error: "El nombre es obligatorio" });
         }
 
-        // Upsert es ideal: si no existe el ID 1 lo crea, si existe lo actualiza
+        // Buscamos el primero disponible para actualizarlo, o creamos uno nuevo
+        const existing = await prisma.Base_restaurant.findFirst();
+        const restaurantId = existing ? existing.id : 1;
+
         const restaurant = await prisma.Base_restaurant.upsert({
-          where: { id: 1 }, 
+          where: { id: restaurantId }, 
           update: { 
             name, 
             address, 
@@ -40,7 +43,6 @@ export default async function handler(req, res) {
             active: true 
           },
           create: { 
-            id: 1, 
             name, 
             address, 
             phone,
@@ -50,8 +52,8 @@ export default async function handler(req, res) {
 
         return res.status(201).json(restaurant);
       } catch (error) {
-        console.error("Error al guardar:", error);
-        return res.status(500).json({ error: "Error al guardar el restaurante" });
+        console.error("Error al guardar en BD:", error);
+        return res.status(500).json({ error: "No se pudo guardar la configuración" });
       }
 
     default:

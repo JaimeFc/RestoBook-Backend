@@ -9,7 +9,7 @@ import Logo from '@ui/layout/Logo';
 import { isMobile } from 'react-device-detect';
 import { useRouter } from 'next/router';
 import { authService } from '@services/auth.service';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, cloneElement } from 'react'; // Añadido cloneElement
 import { useDispatch } from 'react-redux';
 import { set } from '@redux/reducers/accessSlice';
 import { set as setRoles } from '@redux/reducers/rolesSlice';
@@ -23,7 +23,8 @@ const drawerWidth = 260;
 const Dashboard = (props) => {
   const [open, setOpen] = useState(!isMobile);
   const [user, setUser] = useState({});
-  const [restaurantData, setRestaurantData] = useState(null); // Nuevo estado para la DB
+  const [restaurantData, setRestaurantData] = useState(null);
+  const [stats, setStats] = useState(null); // Nuevo estado para las estadísticas (0 -> 1)
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const dispatch = useDispatch();
@@ -41,12 +42,20 @@ const Dashboard = (props) => {
         const roles = await userService.roles();
         dispatch(setRoles(roles || {}));
 
-        // 2. Cargar Datos del Restaurante desde nuestra nueva API
-        const res = await fetch('/api/restaurant');
-        if (res.ok) {
-          const restInfo = await res.json();
+        // 2. Cargar Datos del Restaurante
+        const resRest = await fetch('/api/restaurant');
+        if (resRest.ok) {
+          const restInfo = await resRest.json();
           setRestaurantData(restInfo);
         }
+
+        // 3. CARGAR ESTADÍSTICAS (Aquí es donde el 0 pasará a 1)
+        const resStats = await fetch('/api/dashboard/stats');
+        if (resStats.ok) {
+          const statsData = await resStats.json();
+          setStats(statsData);
+        }
+
       } catch (error) {
         if (error === 'No autorizado' || error === 'Sesión caducada')
           return await router.replace('/auth/signin');
@@ -57,23 +66,14 @@ const Dashboard = (props) => {
     loadAllData();
   }, [dispatch, router]);
 
-  const handleDrawerToggle = () => {
-    setOpen(!open);
-  };
+  // ... (Funciones handleDrawerToggle, handleOpen, etc. se mantienen igual)
+  const handleDrawerToggle = () => setOpen(!open);
+  const handleOpen = () => isMobile ? setOpen(!open) : null;
+  const handleDrawerClose = () => setOpen(false);
 
-  const handleOpen = () => {
-    isMobile ? setOpen(!open) : null;
-  };
-
-  const handleDrawerClose = () => {
-    setOpen(false);
-  };
-
-  // Función actualizada para dar prioridad a los datos de la base de datos
   const getCompanyName = () => {
     if (restaurantData?.name) return restaurantData.name.toUpperCase();
-    const name = user?.Institution?.name;
-    return (name || 'Restobook').toUpperCase();
+    return (user?.Institution?.name || 'Restobook').toUpperCase();
   };
 
   const getCompanyIsologo = () => {
@@ -91,72 +91,27 @@ const Dashboard = (props) => {
       <DrawerHeader>
         <Logo logo={getCompanyIsologo()} collapsed={!open} />
         {open && (
-          <Text
-            style={{
-              color: '#5d2e0a',
-              fontWeight: 600,
-              fontSize: 16,
-              textAlign: 'center',
-              padding: '0 16px 16px',
-              lineHeight: 1.5,
-            }}
-          >
+          <Text style={{ color: '#5d2e0a', fontWeight: 600, fontSize: 16, textAlign: 'center', padding: '0 16px 16px', lineHeight: 1.5 }}>
             {getCompanyName()}
           </Text>
         )}
       </DrawerHeader>
-      <SidebarList handleOpen={handleOpen} collapsed={!open} />
+      <SidebarList handleOpen={handleOpen} collapsed={!open} user={user} />
     </>
   );
 
   return (
-    <Layout
-      style={{
-        minHeight: '100vh',
-        background: '#f8fafc',
-        '--dashboard-header': 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)',
-        '--dashboard-bg': '#f8fafc',
-        '--sidebar-bg': '#ffffff',
-      }}
-    >
-      <AppBar 
-        open={open} 
-        style={{ 
-          background: 'linear-gradient(135deg, #c06320 0%, #944305 100%)',
-          borderBottom: 'none'
-        }}
-      >
-        <Space
-          style={{
-            width: '100%',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
+    <Layout style={{ minHeight: '100vh', background: '#f8fafc' }}>
+      <AppBar open={open} style={{ background: 'linear-gradient(135deg, #c06320 0%, #944305 100%)', borderBottom: 'none' }}>
+        <Space style={{ width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space align="center" size={16}>
             <Button
               type="text"
               icon={<MenuOutlined style={{ fontSize: 18 }} />}
               onClick={handleDrawerToggle}
-              style={{
-                color: 'white',
-                height: 40,
-                width: 40,
-                borderRadius: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.3s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-              }}
+              style={{ color: 'white', height: 40, width: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             />
             <Text style={{ color: 'white', fontWeight: 600, fontSize: 16 }}>
-              {/* AQUÍ EL CAMBIO: Ahora usa el nombre real de la DB */}
               Sistema de Gestión - {restaurantData?.name || 'RestoBook'}
             </Text>
           </Space>
@@ -165,58 +120,20 @@ const Dashboard = (props) => {
       </AppBar>
 
       {isMobile ? (
-        <Drawer
-          placement="left"
-          onClose={handleDrawerClose}
-          open={open}
-          width={drawerWidth}
-          styles={{
-            header: {
-              background: 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-            },
-            body: {
-              padding: 0,
-              background: '#ffffff',
-            },
-          }}
-        >
+        <Drawer placement="left" onClose={handleDrawerClose} open={open} width={drawerWidth} styles={{ body: { padding: 0, background: '#ffffff' } }}>
           {siderContent}
         </Drawer>
       ) : (
-        <Sider
-          width={drawerWidth}
-          collapsed={!open}
-          collapsedWidth={72}
-          trigger={null}
-          style={{
-            background: '#ffffff',
-            boxShadow: '2px 0 16px rgba(0, 0, 0, 0.06)',
-            borderRight: '1px solid #f1f5f9',
-            position: 'fixed',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            overflow: 'hidden',
-            zIndex: 1000,
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          }}
-        >
-          <div
-            style={{
-              height: '100%',
-              overflow: 'auto',
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#8b4513 transparent',
-            }}
-          >
-            {siderContent}
-          </div>
+        <Sider width={drawerWidth} collapsed={!open} collapsedWidth={72} trigger={null} style={{ background: '#ffffff', boxShadow: '2px 0 16px rgba(0, 0, 0, 0.06)', position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 1000 }}>
+          <div style={{ height: '100%', overflow: 'auto' }}>{siderContent}</div>
         </Sider>
       )}
 
       <Layout>
-        <Main open={open}>{props.children}</Main>
+        <Main open={open}>
+          {/* PASAMOS LAS STATS A LAS PÁGINAS HIJAS */}
+          {cloneElement(props.children, { stats })}
+        </Main>
       </Layout>
     </Layout>
   );

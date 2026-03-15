@@ -3,6 +3,8 @@ import SidebarListItem from '@ui/layout/SidebarListItem';
 import { useEffect, useState } from 'react';
 import { menuService } from '@services/menu.service';
 import { useRouter } from 'next/router';
+// Importamos los iconos necesarios
+import { CalendarOutlined, DeploymentUnitOutlined } from '@ant-design/icons'; 
 
 const { SubMenu } = Menu;
 const { Text } = Typography;
@@ -14,16 +16,9 @@ const upper = (text) => {
 const hasChildren = (item) => {
   if (item?.dashboard) return false;
   const { children: children } = item;
-  if (children === undefined) {
-    return false;
-  }
-  if (children.constructor !== Array) {
-    return false;
-  }
-  if (children.length === 0) {
-    return false;
-  }
-  return true;
+  if (children === undefined) return false;
+  if (children.constructor !== Array) return false;
+  return children.length !== 0;
 };
 
 const MenuItem = ({ item, handleOpen }) => {
@@ -32,13 +27,14 @@ const MenuItem = ({ item, handleOpen }) => {
 };
 
 const SingleLevel = ({ item, handleOpen }) => {
-  if (!item?.Page && !item?.dashboard) return <></>;
+  if (!item?.Page && !item?.dashboard && !item?.manual) return <></>;
+  
   return (
     <SidebarListItem
       key={item.id}
       text={item.displayName || item.name}
       icon={item.icon}
-      dir={item.Page?.url}
+      dir={item.Page?.url || item.url} 
       handleOpen={handleOpen}
       urls=""
     />
@@ -47,7 +43,6 @@ const SingleLevel = ({ item, handleOpen }) => {
 
 const MultiLevel = ({ item, handleOpen }) => {
   const { children: children } = item;
-
   return (
     <SubMenu key={item.id} title={upper(item.name)}>
       {children.map((child, key) => (
@@ -59,35 +54,14 @@ const MultiLevel = ({ item, handleOpen }) => {
 
 const SectionTitle = ({ title, collapsed }) => {
   if (collapsed) {
-    // Mostrar solo la primera letra cuando está colapsado
     return (
-      <div
-        style={{
-          padding: '16px 0',
-          color: 'rgba(0, 0, 0, 0.45)',
-          fontSize: 14,
-          fontWeight: 700,
-          textAlign: 'center',
-          textTransform: 'uppercase',
-          letterSpacing: 0,
-        }}
-      >
+      <div style={{ padding: '16px 0', color: 'rgba(0, 0, 0, 0.45)', fontSize: 14, fontWeight: 700, textAlign: 'center', textTransform: 'uppercase' }}>
         {title?.charAt(0) || ''}
       </div>
     );
   }
-
   return (
-    <div
-      style={{
-        padding: '16px 24px 8px',
-        color: 'rgba(0, 0, 0, 0.45)',
-        fontSize: 12,
-        fontWeight: 600,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-      }}
-    >
+    <div style={{ padding: '16px 24px 8px', color: 'rgba(0, 0, 0, 0.45)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
       {title}
     </div>
   );
@@ -100,8 +74,31 @@ const SidebarList = ({ handleOpen, collapsed }) => {
 
   const load = async () => {
     try {
-      const tree = await menuService.getTree();
-      setMenus(tree);
+      let tree = await menuService.getTree();
+      
+      // 1. Opción de Nueva Reserva
+      const bookingItem = {
+        id: 'manual-booking',
+        name: 'Reservar Mesa',
+        displayName: 'Reservar Mesa',
+        icon: <CalendarOutlined />,
+        url: '/base/new-booking',
+        manual: true 
+      };
+
+      // 2. NUEVA OPCIÓN: MAPA DE MESAS
+      const mapItem = {
+        id: 'manual-map',
+        name: 'Mapa de Mesas',
+        displayName: 'Mapa de Mesas',
+        icon: <DeploymentUnitOutlined />,
+        url: '/base/table-map',
+        manual: true 
+      };
+
+      // Inyectamos ambos al inicio del menú
+      setMenus([bookingItem, mapItem, ...tree]);
+      
     } catch (error) {
       setError(error);
     }
@@ -112,14 +109,7 @@ const SidebarList = ({ handleOpen, collapsed }) => {
   }, []);
 
   if (error) {
-    return (
-      <Alert
-        message="Error al cargar los menus"
-        description={error}
-        type="error"
-        showIcon
-      />
-    );
+    return <Alert message="Error al cargar los menus" description={error} type="error" showIcon />;
   }
 
   const selectedKey = router.asPath;
@@ -129,10 +119,7 @@ const SidebarList = ({ handleOpen, collapsed }) => {
       mode="inline"
       selectedKeys={[selectedKey]}
       defaultOpenKeys={menus.map((item) => item.id?.toString())}
-      style={{
-        borderRight: 0,
-        height: '100%',
-      }}
+      style={{ borderRight: 0, height: '100%' }}
       theme="light"
     >
       {menus.map((item, key) => {
@@ -152,7 +139,7 @@ const SidebarList = ({ handleOpen, collapsed }) => {
             </Menu.ItemGroup>
           );
         }
-        return <MenuItem key={key} item={item} handleOpen={handleOpen} />;
+        return <MenuItem key={item.id || key} item={item} handleOpen={handleOpen} />;
       })}
     </Menu>
   );

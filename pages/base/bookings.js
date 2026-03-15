@@ -14,7 +14,8 @@ import {
   CheckCircleOutlined, 
   CloseCircleOutlined, 
   ClockCircleOutlined,
-  SyncOutlined 
+  SyncOutlined,
+  LogoutOutlined // Nuevo icono para finalizar
 } from '@ant-design/icons';
 import Dashboard from '@ui/layout/Dashboard';
 
@@ -28,7 +29,7 @@ const BookingsPage = () => {
   const fetchBookings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/bookings'); // Necesitaremos crear este endpoint
+      const res = await fetch('/api/bookings'); 
       if (res.ok) {
         const data = await res.json();
         setBookings(data);
@@ -44,20 +45,24 @@ const BookingsPage = () => {
     fetchBookings();
   }, [fetchBookings]);
 
-  // 2. Función para cambiar el estado de una reserva
+  // 2. Función corregida para cambiar el estado de una reserva
   const updateStatus = async (id, newStatus) => {
     try {
-      const res = await fetch(`/api/bookings/${id}`, {
-        method: 'PATCH',
+      // Usamos el endpoint que creamos: update-status y el método PUT
+      const res = await fetch('/api/bookings/update-status', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ id, status: newStatus }),
       });
+      
       if (res.ok) {
-        message.success(`Reserva actualizada a ${newStatus}`);
+        message.success(`Reserva marcada como ${newStatus}`);
         fetchBookings(); // Recargar la lista
+      } else {
+        message.error("Error al actualizar en el servidor");
       }
     } catch (error) {
-      message.error("No se pudo actualizar el estado");
+      message.error("No se pudo conectar con el servidor");
     }
   };
 
@@ -77,7 +82,12 @@ const BookingsPage = () => {
       title: 'Mesa',
       dataIndex: ['table', 'number'],
       key: 'table',
-      render: (num) => <Badge count={`Mesa ${num}`} style={{ backgroundColor: '#52c41a' }} />,
+      render: (num, record) => (
+        <Space direction="vertical" size={0}>
+            <Badge count={`Mesa ${num}`} style={{ backgroundColor: '#52c41a' }} />
+            <Text type="secondary" style={{ fontSize: 11 }}>{record.table?.location}</Text>
+        </Space>
+      ),
     },
     {
       title: 'Fecha y Hora',
@@ -112,26 +122,45 @@ const BookingsPage = () => {
       key: 'action',
       render: (_, record) => (
         <Space size="middle">
+          {/* Acción para Confirmar */}
           {record.status === 'PENDIENTE' && (
             <Button 
               type="primary" 
               size="small" 
               icon={<CheckCircleOutlined />}
               onClick={() => updateStatus(record.id, 'CONFIRMADA')}
+              style={{ background: '#52c41a', borderColor: '#52c41a' }}
             >
               Confirmar
             </Button>
           )}
-          <Popconfirm
-            title="¿Deseas cancelar esta reserva?"
-            onConfirm={() => updateStatus(record.id, 'CANCELADA')}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="text" danger size="small" icon={<CloseCircleOutlined />}>
-              Cancelar
+
+          {/* Acción para Finalizar (cuando el cliente se va) */}
+          {record.status === 'CONFIRMADA' && (
+            <Button 
+              type="primary" 
+              size="small" 
+              icon={<LogoutOutlined />}
+              onClick={() => updateStatus(record.id, 'FINALIZADA')}
+              style={{ background: '#1890ff', borderColor: '#1890ff' }}
+            >
+              Finalizar
             </Button>
-          </Popconfirm>
+          )}
+
+          {/* Acción para Cancelar (Solo si no está ya cancelada o finalizada) */}
+          {record.status !== 'CANCELADA' && record.status !== 'FINALIZADA' && (
+            <Popconfirm
+              title="¿Deseas cancelar esta reserva?"
+              onConfirm={() => updateStatus(record.id, 'CANCELADA')}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="text" danger size="small" icon={<CloseCircleOutlined />}>
+                Cancelar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },

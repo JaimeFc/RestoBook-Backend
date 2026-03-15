@@ -51,8 +51,9 @@ const Home = () => {
   const [loading, setLoading] = useState(true);
   const [weather, setWeather] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  
   const [restaurant, setRestaurant] = useState(null);
+  
+  // Estado inicializado para recibir los datos de la API
   const [stats, setStats] = useState({ 
     reservasHoy: 0, 
     mesasDisponibles: 0, 
@@ -66,21 +67,26 @@ const Home = () => {
       const userData = await authService.user();
       setUser(userData);
 
-      // 2. Cargar datos del restaurante configurado
+      // 2. Cargar datos del restaurante
       const resResto = await fetch('/api/restaurant');
       if (resResto.ok) {
         const dataResto = await resResto.json();
         setRestaurant(dataResto);
       }
 
-      // 3. Cargar estadísticas reales desde la nueva API que creamos
-      const resStats = await fetch('/api/menu/dashboard/stats');
+      // 3. CARGA DE ESTADÍSTICAS (CORREGIDA: Eliminamos /menu/ de la ruta)
+      const resStats = await fetch('/api/dashboard/stats');
       if (resStats.ok) {
         const dataStats = await resStats.json();
-        setStats(dataStats);
+        setStats({
+          reservasHoy: dataStats.reservasHoy || 0,
+          mesasDisponibles: dataStats.mesasDisponibles || 0,
+          totalMesas: dataStats.totalMesas || 0,
+          ocupacion: dataStats.ocupacion || 0
+        });
       }
 
-      // 4. Cargar clima (API interna)
+      // 4. Cargar clima
       const resWeather = await fetch('/api/weather?city=Quito', {
         headers: { 'x-resto-token': 'RestoBook2026' } 
       });
@@ -101,20 +107,20 @@ const Home = () => {
 
   return (
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
-      {/* Banner Superior Dinámico */}
+      {/* Banner Superior */}
       <Card bordered={false} style={{ 
         borderRadius: 24, 
         background: restaurant ? 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)' : 'linear-gradient(135deg, #2c3e50 0%, #000000 100%)' 
       }}>
         <Title level={2} style={{ color: '#fff', margin: 0 }}>
-          ¡Bienvenido a {restaurant?.name || 'RestoBook'}, {user?.Person?.firstName || 'Admin'}!
+          ¡Bienvenido a {restaurant?.name || 'RestoBook Gourmet'}, {user?.Person?.firstName || 'ADMINISTRADOR'}!
         </Title>
         <Text style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
-          {restaurant ? `Gestionando sucursal: ${restaurant.address || 'Sin dirección'}` : 'Configure su restaurante para empezar.'}
+          {restaurant ? `Gestionando sucursal: ${restaurant.address || 'Ubicación configurada'}` : 'Configure su restaurante para empezar.'}
         </Text>
       </Card>
 
-      {/* Grid de Estadísticas con Clic Funcional */}
+      {/* Grid de Estadísticas */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={5}>
           <StatCard 
@@ -123,7 +129,7 @@ const Home = () => {
             subtitle="Ver agenda del día" 
             gradient="linear-gradient(135deg, #d2691e 0%, #a0522d 100%)" 
             icon={<CalendarOutlined />} 
-            onClick={() => router.push('/base/bookings')} // Redirige a Reservas
+            onClick={() => router.push('/base/bookings')} 
           />
         </Col>
 
@@ -131,10 +137,10 @@ const Home = () => {
           <StatCard 
             title="Mesas Disponibles" 
             value={`${stats.mesasDisponibles}/${stats.totalMesas}`} 
-            subtitle="Estado del salón" 
+            subtitle="Estado actual del salón" 
             gradient="linear-gradient(135deg, #6b8e23 0%, #556b2f 100%)" 
             icon={<ShopOutlined />} 
-            onClick={() => router.push('/base/tables')} // Redirige a Mesas
+            onClick={() => router.push('/base/tables')} 
           />
         </Col>
         
@@ -170,7 +176,6 @@ const Home = () => {
         </Col>
       </Row>
 
-      {/* Lista de Accesos Directos */}
       <Card title="Panel de Gestión de Restaurante" bordered={false} style={{ borderRadius: 24 }}>
         <Space direction="vertical" style={{ width: '100%' }} size="large">
             <DashboardList menuCode="admhead" />
@@ -179,7 +184,6 @@ const Home = () => {
         </Space>
       </Card>
 
-      {/* Modal de Detalle del Clima */}
       <Modal
         title={<Space><EnvironmentOutlined /> Pronóstico Detallado</Space>}
         open={isModalVisible}

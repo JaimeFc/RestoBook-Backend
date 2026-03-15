@@ -22,15 +22,24 @@ const StyledMenuItem = styled(Menu.Item)`
 
 const SidebarListItem = ({ icon, text, dir, urls, handleOpen }) => {
   const router = useRouter();
-  const link = `${dir}`.concat('/').concat(urls);
+  
+  // Limpiamos la construcción del link para evitar dobles barras o valores extraños
+  const link = dir ? (urls ? `${dir}/${urls}` : dir) : '#';
 
   const onClick = async () => {
-    await router.push(link);
-    if (isMobile) handleOpen();
+    if (link !== '#') {
+      await router.push(link);
+      if (isMobile) handleOpen();
+    }
   };
 
   const getIcon = (iconName) => {
     if (!iconName) return null;
+
+    // VALIDACIÓN CLAVE: Si el icono ya es un componente/objeto de React, devolverlo directamente
+    if (typeof iconName !== 'string') {
+      return iconName; 
+    }
 
     const iconMap = {
       dashboard: 'DashboardOutlined',
@@ -49,12 +58,15 @@ const SidebarListItem = ({ icon, text, dir, urls, handleOpen }) => {
       add: 'PlusOutlined',
       calendar: 'CalendarOutlined',
       field: 'FieldTimeOutlined',
+      shop: 'ShopOutlined',
+      pie: 'PieChartOutlined'
     };
 
+    // Buscamos el nombre del icono en el mapa, si no existe usamos FileOutlined por defecto
     const antIconName = iconMap[iconName.toLowerCase()] || 'FileOutlined';
     const IconComponent = Icons[antIconName];
 
-    return IconComponent ? <IconComponent /> : null;
+    return IconComponent ? <IconComponent /> : <Icons.FileOutlined />;
   };
 
   return (

@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Definimos el rango de "Hoy" (desde las 00:00:00 hasta las 23:59:59)
+    // Definimos el rango de "Hoy" (basado en la fecha actual del servidor)
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     
@@ -16,37 +16,40 @@ export default async function handler(req, res) {
     todayEnd.setHours(23, 59, 59, 999);
 
     // 1. Contar reservas de hoy
-    // Nota: Usamos base_booking (en minúsculas) que es como Prisma genera el cliente
-    const totalReservasHoy = await prisma.base_booking.count({
+    // Ajustado: Usamos 'Base_booking' (nombre exacto del modelo) 
+    // y contamos solo las que están 'CONFIRMADA' para el indicador principal
+    const totalReservasHoy = await prisma.Base_booking.count({
       where: {
         date: {
           gte: todayStart,
           lte: todayEnd,
         },
-        status: {
-          not: 'CANCELADA',
-        },
+        status: 'CONFIRMADA', 
       },
     });
 
     // 2. Contar mesas disponibles (status === 'available')
-    const mesasDisponibles = await prisma.base_table.count({
+    // Ajustado: Usamos 'Base_table'
+    const mesasDisponibles = await prisma.Base_table.count({
       where: {
         status: 'available',
         active: true,
       },
     });
 
-    // 3. Obtener el total de mesas activas para el cálculo de porcentaje
-    const totalMesas = await prisma.base_table.count({
+    // 3. Obtener el total de mesas activas
+    const totalMesas = await prisma.Base_table.count({
       where: {
         active: true,
       },
     });
 
+    // 4. Calculamos las mesas OCUPADAS (total - disponibles) para el porcentaje
+    const mesasOcupadas = totalMesas - mesasDisponibles;
+
     // Calculamos el porcentaje de ocupación
     const ocupacionPorcentaje = totalMesas > 0 
-      ? Math.round(((totalMesas - mesasDisponibles) / totalMesas) * 100) 
+      ? Math.round((mesasOcupadas / totalMesas) * 100) 
       : 0;
 
     return res.status(200).json({

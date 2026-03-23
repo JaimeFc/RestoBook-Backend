@@ -40,6 +40,9 @@
   "private": true,
   "dependencies": {
     "@ant-design/icons": "^5.5.2",
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
     "@hapi/iron": "7.0.1",
     "@hookform/error-message": "2.0.1",
     "@hookform/resolvers": "3.3.1",

@@ -3,8 +3,13 @@ import SidebarListItem from '@ui/layout/SidebarListItem';
 import { useEffect, useState } from 'react';
 import { menuService } from '@services/menu.service';
 import { useRouter } from 'next/router';
-// Importamos los iconos necesarios
-import { CalendarOutlined, DeploymentUnitOutlined } from '@ant-design/icons'; 
+// Importamos SettingOutlined para la configuración
+import { 
+  CalendarOutlined, 
+  DeploymentUnitOutlined, 
+  SettingOutlined, 
+  HomeOutlined 
+} from '@ant-design/icons'; 
 
 const { SubMenu } = Menu;
 const { Text } = Typography;
@@ -86,7 +91,7 @@ const SidebarList = ({ handleOpen, collapsed }) => {
         manual: true 
       };
 
-      // 2. NUEVA OPCIÓN: MAPA DE MESAS
+      // 2. Mapa de Mesas
       const mapItem = {
         id: 'manual-map',
         name: 'Mapa de Mesas',
@@ -96,8 +101,18 @@ const SidebarList = ({ handleOpen, collapsed }) => {
         manual: true 
       };
 
-      // Inyectamos ambos al inicio del menú
-      setMenus([bookingItem, mapItem, ...tree]);
+      // 3. NUEVA OPCIÓN: CONFIGURACIÓN DEL RESTAURANTE
+      const settingsItem = {
+        id: 'manual-settings',
+        name: 'Configuración',
+        displayName: 'Configuración',
+        icon: <SettingOutlined />,
+        url: '/base/settings', // Esta ruta abrirá tu nuevo formulario
+        manual: true 
+      };
+
+      // Inyectamos las opciones manuales al inicio del menú
+      setMenus([bookingItem, mapItem, settingsItem, ...tree]);
       
     } catch (error) {
       setError(error);

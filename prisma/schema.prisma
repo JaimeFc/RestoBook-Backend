@@ -240,6 +240,7 @@ model Base_booking {
   time         String     // Hora de la reserva (ej: "20:00")
   people       Int        @default(1) // Cantidad de personas
   status       String     @default("PENDIENTE") // PENDIENTE, CONFIRMADA, FINALIZADA, CANCELADA
+  menuItems    String?
   observations String?    // Notas del cliente
   
   // Relaciones

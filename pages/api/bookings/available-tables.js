@@ -2,28 +2,27 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export default async function handler(req, res) {
-  const { date, time } = req.query;
+  // Soporta GET (para listar) y POST (para validar antes de crear)
+  const { date, time, tableId } = req.method === 'POST' ? req.body : req.query;
 
   if (!date || !time) {
     return res.status(400).json({ error: "Fecha y hora son requeridas" });
   }
 
   try {
-    // 1. Normalizar la fecha para la consulta (solo año-mes-día)
+    // 1. Normalizar fecha
     const searchDate = new Date(date);
     searchDate.setHours(0, 0, 0, 0);
 
-    // 2. Definir rango de bloqueo (Margen de 2 horas)
-    // Usamos una lógica más segura para el cálculo de tiempo
+    // 2. Definir rango de choque (Margen de 2 horas)
     const [hours, minutes] = time.split(':').map(Number);
-    const startHour = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    const startHourNum = hours;
+    const startHour = `${startHourNum.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
     
-    // Calculamos el fin de rango evitando desbordamientos (ej. 25:00)
     const endHourNum = (hours + 2) % 24;
     const endHour = `${endHourNum.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 
-    // 3. Buscar reservas que "choquen" en ese horario específico
-    // Solo filtramos si el estado NO es 'CANCELADA' o 'FINALIZADA'
+    // 3. Buscar reservas que "choquen"
     const busyBookings = await prisma.Base_booking.findMany({
       where: {
         date: searchDate,
@@ -40,23 +39,39 @@ export default async function handler(req, res) {
 
     const busyTableIds = busyBookings.map(b => b.tableId);
 
-    // 4. Traer TODAS las mesas activas que no estén en la lista de ocupadas
-    // Quitamos cualquier filtro de 'status' manual para que mande la disponibilidad real
+    // --- LÓGICA DE BLOQUEO (NUEVA) ---
+    // Si el usuario envió un tableId (intento de reserva), verificamos si está en la lista de ocupadas
+    if (tableId && busyTableIds.includes(parseInt(tableId))) {
+      
+      // Buscamos las mesas que SÍ están libres para sugerir
+      const suggestedTables = await prisma.Base_table.findMany({
+        where: {
+          id: { notIn: busyTableIds.length > 0 ? busyTableIds : [-1] },
+          active: true
+        },
+        take: 5 // Sugerimos las primeras 5 libres
+      });
+
+      return res.status(409).json({
+        success: false,
+        message: "¡Lo sentimos! Esta mesa ya ha sido reservada por otra persona en este horario.",
+        availableOptions: suggestedTables
+      });
+    }
+
+    // 4. Traer todas las mesas disponibles (comportamiento normal de consulta)
     const availableTables = await prisma.Base_table.findMany({
       where: {
-        id: { 
-          notIn: busyTableIds.length > 0 ? busyTableIds : [-1] // Evita error si la lista está vacía
-        },
+        id: { notIn: busyTableIds.length > 0 ? busyTableIds : [-1] },
         active: true
       },
-      orderBy: {
-        number: 'asc'
-      }
+      orderBy: { number: 'asc' }
     });
 
     res.status(200).json(availableTables);
+
   } catch (error) {
-    console.error("Error en available-tables:", error);
+    console.error("Error en validación de disponibilidad:", error);
     res.status(500).json({ error: "Error al calcular disponibilidad" });
   }
 }

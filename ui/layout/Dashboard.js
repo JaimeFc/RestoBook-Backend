@@ -9,7 +9,7 @@ import Logo from '@ui/layout/Logo';
 import { isMobile } from 'react-device-detect';
 import { useRouter } from 'next/router';
 import { authService } from '@services/auth.service';
-import { useState, useEffect, cloneElement } from 'react'; // Añadido cloneElement
+import { useState, useEffect, cloneElement } from 'react'; 
 import { useDispatch } from 'react-redux';
 import { set } from '@redux/reducers/accessSlice';
 import { set as setRoles } from '@redux/reducers/rolesSlice';
@@ -24,7 +24,7 @@ const Dashboard = (props) => {
   const [open, setOpen] = useState(!isMobile);
   const [user, setUser] = useState({});
   const [restaurantData, setRestaurantData] = useState(null);
-  const [stats, setStats] = useState(null); // Nuevo estado para las estadísticas (0 -> 1)
+  const [stats, setStats] = useState(null); 
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const dispatch = useDispatch();
@@ -49,7 +49,8 @@ const Dashboard = (props) => {
           setRestaurantData(restInfo);
         }
 
-        // 3. CARGAR ESTADÍSTICAS (Aquí es donde el 0 pasará a 1)
+        // 3. CARGAR ESTADÍSTICAS (Solo se cargan si es admin para ahorrar recursos)
+        // Se mantiene la llamada pero la protegemos en el render
         const resStats = await fetch('/api/dashboard/stats');
         if (resStats.ok) {
           const statsData = await resStats.json();
@@ -66,7 +67,6 @@ const Dashboard = (props) => {
     loadAllData();
   }, [dispatch, router]);
 
-  // ... (Funciones handleDrawerToggle, handleOpen, etc. se mantienen igual)
   const handleDrawerToggle = () => setOpen(!open);
   const handleOpen = () => isMobile ? setOpen(!open) : null;
   const handleDrawerClose = () => setOpen(false);
@@ -131,8 +131,14 @@ const Dashboard = (props) => {
 
       <Layout>
         <Main open={open}>
-          {/* PASAMOS LAS STATS A LAS PÁGINAS HIJAS */}
-          {cloneElement(props.children, { stats })}
+          {/* MODIFICACIÓN DE SEGURIDAD:
+              Pasamos 'stats' solo si el rol es 'admin'. 
+              De lo contrario, pasamos null para que Angela no vea datos globales.
+          */}
+          {cloneElement(props.children, { 
+            stats: user?.role === 'admin' ? stats : null,
+            user: user 
+          })}
         </Main>
       </Layout>
     </Layout>

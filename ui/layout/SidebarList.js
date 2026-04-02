@@ -3,7 +3,6 @@ import SidebarListItem from '@ui/layout/SidebarListItem';
 import { useEffect, useState } from 'react';
 import { menuService } from '@services/menu.service';
 import { useRouter } from 'next/router';
-// Importamos SettingOutlined para la configuración
 import { 
   CalendarOutlined, 
   DeploymentUnitOutlined, 
@@ -72,7 +71,7 @@ const SectionTitle = ({ title, collapsed }) => {
   );
 };
 
-const SidebarList = ({ handleOpen, collapsed }) => {
+const SidebarList = ({ handleOpen, collapsed, user }) => {
   const [menus, setMenus] = useState([]);
   const [error, setError] = useState(false);
   const router = useRouter();
@@ -81,38 +80,40 @@ const SidebarList = ({ handleOpen, collapsed }) => {
     try {
       let tree = await menuService.getTree();
       
-      // 1. Opción de Nueva Reserva
-      const bookingItem = {
-        id: 'manual-booking',
-        name: 'Reservar Mesa',
-        displayName: 'Reservar Mesa',
-        icon: <CalendarOutlined />,
-        url: '/base/new-booking',
-        manual: true 
-      };
+      // 1. Opciones básicas para TODOS los usuarios
+      const visibleMenus = [
+        {
+          id: 'manual-booking',
+          name: 'Reservar Mesa',
+          displayName: 'Reservar Mesa',
+          icon: <CalendarOutlined />,
+          url: '/base/new-booking',
+          manual: true 
+        },
+        {
+          id: 'manual-map',
+          name: 'Mapa de Mesas',
+          displayName: 'Mapa de Mesas',
+          icon: <DeploymentUnitOutlined />,
+          url: '/base/table-map',
+          manual: true 
+        }
+      ];
 
-      // 2. Mapa de Mesas
-      const mapItem = {
-        id: 'manual-map',
-        name: 'Mapa de Mesas',
-        displayName: 'Mapa de Mesas',
-        icon: <DeploymentUnitOutlined />,
-        url: '/base/table-map',
-        manual: true 
-      };
+      // 2. FILTRO DE SEGURIDAD: Solo admin ve Configuración
+      if (user?.role === 'admin') {
+        visibleMenus.push({
+          id: 'manual-settings',
+          name: 'Configuración',
+          displayName: 'Configuración',
+          icon: <SettingOutlined />,
+          url: '/base/settings',
+          manual: true 
+        });
+      }
 
-      // 3. NUEVA OPCIÓN: CONFIGURACIÓN DEL RESTAURANTE
-      const settingsItem = {
-        id: 'manual-settings',
-        name: 'Configuración',
-        displayName: 'Configuración',
-        icon: <SettingOutlined />,
-        url: '/base/settings', // Esta ruta abrirá tu nuevo formulario
-        manual: true 
-      };
-
-      // Inyectamos las opciones manuales al inicio del menú
-      setMenus([bookingItem, mapItem, settingsItem, ...tree]);
+      // Inyectamos las opciones manuales al inicio del menú y luego el árbol de la DB
+      setMenus([...visibleMenus, ...tree]);
       
     } catch (error) {
       setError(error);
@@ -121,7 +122,8 @@ const SidebarList = ({ handleOpen, collapsed }) => {
 
   useEffect(() => {
     load();
-  }, []);
+    // Se recarga si el usuario cambia (ej: al cerrar sesión e iniciar con otra cuenta)
+  }, [user]);
 
   if (error) {
     return <Alert message="Error al cargar los menus" description={error} type="error" showIcon />;

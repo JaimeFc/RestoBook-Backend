@@ -6,7 +6,7 @@ export const ESCAPE = ['Page', 'Module'];
 class MenuData extends ObjectData {
   constructor() {
     const name = 'menu';
-    const table = 'base_menu';
+    const table = 'base_menu'; // Volvemos a la tabla de configuración
     super(name, table, schemas);
   }
 }

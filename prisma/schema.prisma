@@ -282,3 +282,12 @@ model courtShedules {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Base_menu_item {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  price       Float
+  category    String   @default("General") // Ej: Ejecutivo, Especial, Bebida
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}

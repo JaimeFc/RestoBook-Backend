@@ -1,9 +1,9 @@
 import { PrismaClient } from '@prisma/client';
+import redis from '../../../lib/redis'; // IMPORTA REDIS AQUÍ
 
 const prisma = new PrismaClient();
 
 export default async function handler(req, res) {
-  // Solo permitimos PUT como indica tu frontend
   if (req.method !== 'PUT') {
     return res.status(405).json({ message: 'Método no permitido' });
   }
@@ -11,26 +11,19 @@ export default async function handler(req, res) {
   const { id, status } = req.body;
 
   try {
-    // Usamos una transacción para asegurar que si falla el cambio de mesa, 
-    // no se cambie la reserva y viceversa.
     const result = await prisma.$transaction(async (tx) => {
-      
-      // 1. Actualizamos el estado de la reserva
       const updatedBooking = await tx.Base_booking.update({
         where: { id: parseInt(id) },
         data: { status: status },
       });
 
-      // 2. Lógica para cambiar el estado de la MESA
       if (status === 'CONFIRMADA') {
-        // Si confirmamos, la mesa pasa a OCUPADA
         await tx.Base_table.update({
           where: { id: updatedBooking.tableId },
           data: { status: 'occupied' },
         });
       } 
       else if (status === 'FINALIZADA' || status === 'CANCELADA') {
-        // Si el cliente se va o se cancela, la mesa queda DISPONIBLE de nuevo
         await tx.Base_table.update({
           where: { id: updatedBooking.tableId },
           data: { status: 'available' },
@@ -40,15 +33,14 @@ export default async function handler(req, res) {
       return updatedBooking;
     });
 
+    // --- CORRECCIÓN CRÍTICA ---
+    // Borramos la caché para que el contador de la "Card" se actualice al instante
+    try { await redis.del('cache:bookings_list_v3'); } catch (e) { console.log("Redis no disponible"); }
+
     return res.status(200).json(result);
 
   } catch (error) {
     console.error("Error al actualizar estado:", error);
-    return res.status(500).json({ 
-      error: 'Error interno', 
-      details: error.message 
-    });
-  } finally {
-    await prisma.$disconnect();
+    return res.status(500).json({ error: 'Error interno', details: error.message });
   }
 }

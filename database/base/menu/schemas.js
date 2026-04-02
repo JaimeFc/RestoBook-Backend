@@ -11,30 +11,10 @@ const DEFAULT = {
   dashboard: true,
   active: true,
   menuId: true,
-  Page: {
-    select: {
-      id: true,
-      name: true,
-      url: true,
-    },
-  },
-  Module: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
-  Menu: {
-    select: {
-      name: true,
-    },
-  },
-  menus: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
+  Page: { select: { id: true, name: true, url: true } },
+  Module: { select: { id: true, name: true } },
+  Menu: { select: { name: true } },
+  menus: { select: { id: true, name: true } },
 };
 
 const TREE = {
@@ -44,18 +24,9 @@ const TREE = {
   Module: false,
   Menu: false,
   active: false,
-  Page: {
-    select: {
-      url: true,
-    },
-  },
-  menus: {
-    select: {
-      id: true,
-    },
-  },
+  Page: { select: { url: true } },
+  menus: { select: { id: true } },
 };
 
 const schemas = { DEFAULT, TREE };
-
 export default schemas;

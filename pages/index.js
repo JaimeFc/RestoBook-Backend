@@ -1,7 +1,7 @@
-import { Row, Col, Card, Typography, Space, Avatar, Spin } from 'antd';
+import { Row, Col, Card, Typography, Space, Avatar } from 'antd';
 import { 
   CloudOutlined, DashboardOutlined, CalendarOutlined, 
-  ShopOutlined, TeamOutlined, PieChartOutlined 
+  ShopOutlined, PieChartOutlined, UserAddOutlined 
 } from '@ant-design/icons';
 import Dashboard from '@ui/layout/Dashboard';
 import Loading from '@ui/common/Loading';
@@ -41,59 +41,60 @@ const Home = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentDateFilter, setCurrentDateFilter] = useState(''); 
   
   const [stats, setStats] = useState({
     totalMesas: 6,
     disponibles: 6,
     reservasHoy: 0,
-    porcentajeOcupacion: 0
+    ocupacion: 0
   });
 
   const loadData = useCallback(async () => {
     try {
       const userData = await authService.user();
       setUser(userData);
-
-      const checkAdmin = 
-        userData?.username?.toLowerCase().includes('admin') || 
-        userData?.Role?.code === 'administrator' ||
-        userData?.roleId === 2;
-      
+      const checkAdmin = userData?.Role?.code === 'administrator' || userData?.roleId === 2;
       setIsAdmin(checkAdmin);
 
-      // --- ESTRATEGIA PARA EVITAR EL ERROR 400 ---
-      // Probamos con la URL que suelen usar los controladores de administración
-      const response = await fetch('/api/bookings?limit=100&page=1&filters=%7B%7D'); 
+      // --- 1. DETECCIÓN DE FECHA (Hoy es 3/4/2026) ---
+      const hoy = new Date();
+      const fechaAPI = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+      const dia = hoy.getDate();
+      const mes = hoy.getMonth() + 1;
+      const anio = hoy.getFullYear();
       
-      if (response.ok) {
-        const result = await response.json();
+      // Este es el formato que tu DB entiende: "3/4/2026"
+      const fechaDB = `${dia}/${mes}/${anio}`;
+      setCurrentDateFilter(fechaDB); 
+
+      // --- 2. LLAMADAS A LAS APIS ---
+      const [resBookings] = await Promise.all([
+        fetch('/api/bookings?limit=100')
+      ]);
+
+      if (resBookings.ok) {
+        const data = await resBookings.json();
+        const allBookings = data.data || data.rows || (Array.isArray(data) ? data : []);
         
-        // Verificamos múltiples estructuras posibles de respuesta (data, rows o array)
-        const allBookings = result.data || result.rows || (Array.isArray(result) ? result : []);
-        
-        // Fecha de hoy según tu sistema: 2/4/2026
-        const hoyFija = "2/4/2026";
-        
-        // Filtramos buscando cualquier coincidencia en fecha o calendario
-        const reservasDeHoy = allBookings.filter(b => {
-          const campoFecha = (b.date || b.schedule || b.bookingDate || "").toString();
-          return campoFecha.includes(hoyFija);
+        // Filtrado local para el contador de la Card
+        const reservasHoy = allBookings.filter(b => {
+          const fechaReserva = (b.date || "").toString();
+          return fechaReserva.includes(fechaDB) || fechaReserva.includes(fechaAPI);
         });
 
-        const totalCapacidad = 6;
-        const numReservas = reservasDeHoy.length;
+        const total = 6;
+        const count = reservasHoy.length;
 
         setStats({
-          totalMesas: totalCapacidad,
-          disponibles: Math.max(0, totalCapacidad - numReservas),
-          reservasHoy: numReservas,
-          porcentajeOcupacion: Math.round((numReservas / totalCapacidad) * 100)
+          totalMesas: total,
+          disponibles: Math.max(0, total - count),
+          reservasHoy: count,
+          ocupacion: Math.round((count / total) * 100)
         });
-      } else {
-        console.error("El servidor rechazó la petición con estado:", response.status);
       }
     } catch (e) {
-      console.error("Error cargando datos del dashboard:", e);
+      console.error("Error cargando Dashboard:", e);
     } finally {
       setLoading(false);
     }
@@ -120,56 +121,52 @@ const Home = () => {
       </Card>
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={isAdmin ? 6 : 12}>
+        <Col xs={24} sm={12} lg={6}>
           <StatCard 
-            title={isAdmin ? "Gestión de Reservas" : "Mis Reservas"} 
+            title="Gestión de Reservas" 
             value={stats.reservasHoy} 
             subtitle="Reservas para hoy" 
-            gradient="linear-gradient(135deg, #d2691e 0%, #a0522d 100%)" 
+            gradient="linear-gradient(135deg, #d2691e 0%, #a0522d 100%)"
             icon={<CalendarOutlined />} 
-            onClick={() => router.push('/base/bookings')} 
+            // AL HACER CLIC: Se envía la fecha a la página de reservas
+            onClick={() => router.push(`/base/bookings?date=${currentDateFilter}`)} 
           />
         </Col>
 
-        {isAdmin && (
-          <Col xs={24} sm={12} lg={6}>
-            <StatCard 
-              title="Mesas Disponibles" 
-              value={`${stats.disponibles}/${stats.totalMesas}`} 
-              subtitle="Estado del salón" 
-              gradient="linear-gradient(135deg, #6b8e23 0%, #556b2f 100%)" 
-              icon={<ShopOutlined />} 
-              onClick={() => router.push('/base/tables')} 
-            />
-          </Col>
-        )}
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard 
+            title="Mesas Disponibles" 
+            value={`${stats.disponibles}/${stats.totalMesas}`} 
+            subtitle="Estado actual del salón" 
+            gradient="linear-gradient(135deg, #6b8e23 0%, #556b2f 100%)"
+            icon={<ShopOutlined />} 
+            onClick={() => router.push('/base/tables')} 
+          />
+        </Col>
         
-        <Col xs={24} sm={12} lg={isAdmin ? 6 : 12}>
+        <Col xs={24} sm={12} lg={6}>
           <StatCard
-            title="Clima" value="11°C" subtitle="Nubes"
-            gradient="linear-gradient(135deg, #5f9ea0 0%, #4682b4 100%)" icon={<CloudOutlined />}
+            title="Estado del Clima" 
+            value="12°C" 
+            subtitle="Nubes"
+            gradient="linear-gradient(135deg, #5f9ea0 0%, #4682b4 100%)"
+            icon={<CloudOutlined />}
           />
         </Col>
 
-        {isAdmin && (
-          <Col xs={24} sm={12} lg={6}>
-            <StatCard 
-              title="Ocupación" 
-              value={`${stats.porcentajeOcupacion}%`} 
-              subtitle="Capacidad utilizada" 
-              gradient="linear-gradient(135deg, #db7093 0%, #c71585 100%)" 
-              icon={<PieChartOutlined />} 
-            />
-          </Col>
-        )}
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard 
+            title="Ocupación" 
+            value={`${stats.ocupacion}%`} 
+            subtitle="Capacidad utilizada" 
+            gradient="linear-gradient(135deg, #db7093 0%, #c71585 100%)"
+            icon={<PieChartOutlined />} 
+          />
+        </Col>
       </Row>
 
       {isAdmin && (
-        <Card 
-          title={<Space><DashboardOutlined /> Panel de Administración</Space>} 
-          bordered={false} 
-          style={{ borderRadius: 24, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}
-        >
+        <Card title={<Space><DashboardOutlined /> Panel de Gestión de Restaurante</Space>} bordered={false} style={{ borderRadius: 24 }}>
           <Space direction="vertical" style={{ width: '100%' }} size="large">
               <DashboardList menuCode="admhead" />
               <DashboardList menuCode="adm-resto" />

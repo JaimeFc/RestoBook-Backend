@@ -1,72 +1,91 @@
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  Table, Tag, Space, Button, Card, Typography, message, Popconfirm, Badge 
-} from 'antd';
-import { 
-  CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined,
-  SyncOutlined, LogoutOutlined, HistoryOutlined, EyeOutlined      
-} from '@ant-design/icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/router';
+import { Table, Tag, Space, Button, Card, Typography, message, Popconfirm, Badge } from 'antd';
+import { ClockCircleOutlined, SyncOutlined, LogoutOutlined, HistoryOutlined, EyeOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import Dashboard from '@ui/layout/Dashboard';
-import { authService } from '@services/auth.service';
 
 const { Title, Text } = Typography;
 
 const BookingsPage = () => {
+  const router = useRouter();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null); 
   const [showHistory, setShowHistory] = useState(false);
 
-  const fetchBookings = useCallback(async () => {
+  const fetchBookings = useCallback(async (isHistory) => {
     setLoading(true);
     try {
-      const currentUser = await authService.user();
-      setUser(currentUser);
-
-      const queryParams = new URLSearchParams({
-        showAll: showHistory,
-        userId: currentUser?.id || '',
-        role: currentUser?.role || ''
-      });
-
-      const res = await fetch(`/api/bookings?${queryParams.toString()}`); 
+      const res = await fetch(`/api/bookings?limit=200&_t=${Date.now()}`);
+      const result = await res.json();
       
       if (res.ok) {
-        const data = await res.json();
+        let data = result.data || result;
+        if (!Array.isArray(data)) data = [];
+
+        if (!isHistory) {
+          const hoy = new Date();
+          const hoyISO = hoy.toISOString().split('T')[0]; 
+          
+          data = data.filter(item => {
+            const itemDate = item.date ? item.date.toString() : "";
+            // Mantenemos en la lista las que necesitan atención (CONFIRMADA/PENDIENTE)
+            return item.status === 'CONFIRMADA' || item.status === 'PENDIENTE' || itemDate.includes(hoyISO);
+          });
+        }
         setBookings(data);
       }
     } catch (error) {
-      console.error("Error al cargar:", error);
-      message.error("Error al cargar las reservas");
+      console.error(error);
+      message.error("Error al cargar datos");
     } finally {
       setLoading(false);
     }
-  }, [showHistory]);
-
-  useEffect(() => {
-    fetchBookings();
-  }, [fetchBookings]);
+  }, []);
 
   const updateStatus = async (id, newStatus) => {
+    if (!id) {
+      message.error("ID de reserva no encontrado");
+      return;
+    }
+
+    const hide = message.loading('Procesando...', 0);
     try {
       const res = await fetch('/api/bookings/update-status', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, status: newStatus }),
+        body: JSON.stringify({ 
+          id: id, // El backend debe recibir el ID tal cual viene de la base de datos
+          status: newStatus 
+        }),
       });
-      
+
+      const result = await res.json();
+
       if (res.ok) {
-        message.success(`Reserva marcada como ${newStatus}`);
-        fetchBookings(); 
+        message.success(`Reserva ${newStatus} correctamente`);
+        // Recarga inmediata para ver los cambios
+        fetchBookings(showHistory); 
+      } else {
+        // CORRECCIÓN: Mostramos el error real que devuelve la API (muy útil para debug)
+        message.error(result.message || result.details || "Error al actualizar");
+        console.error("Detalle del error:", result);
       }
     } catch (error) {
-      message.error("Error de conexión");
+      message.error("Error de conexión con el servidor");
+    } finally {
+      hide();
     }
   };
 
+  useEffect(() => {
+    if (router.isReady) {
+      fetchBookings(showHistory);
+    }
+  }, [router.isReady, showHistory, fetchBookings]);
+
   const columns = [
     {
-      title: 'Cliente',
+      title: 'CLIENTE',
       key: 'customer',
       render: (_, record) => (
         <Space direction="vertical" size={0}>
@@ -76,65 +95,60 @@ const BookingsPage = () => {
       ),
     },
     {
-      title: 'Mesa',
+      title: 'MESA',
+      dataIndex: ['table', 'number'],
       key: 'table',
-      render: (num, record) => (
-        <Space direction="vertical" size={0}>
-            <Badge count={`Mesa ${record.table?.number}`} style={{ backgroundColor: '#52c41a' }} />
-            <Text type="secondary" style={{ fontSize: 11 }}>{record.table?.location}</Text>
-        </Space>
-      ),
+      render: (num) => <Badge count={`Mesa ${num}`} style={{ backgroundColor: '#8b4513' }} />,
     },
     {
-      title: 'Fecha y Hora',
+      title: 'FECHA Y HORA',
       key: 'dateTime',
       render: (_, record) => (
         <Space direction="vertical" size={0}>
-          <Text>{new Date(record.date).toLocaleDateString()}</Text>
+          <Text strong style={{ color: '#1890ff' }}>
+            {/* Formateo de fecha más seguro */}
+            {record.date ? new Date(record.date).toLocaleDateString() : '---'}
+          </Text>
           <Text type="secondary"><ClockCircleOutlined /> {record.time}</Text>
         </Space>
       ),
     },
-    { title: 'Personas', dataIndex: 'people', key: 'people', align: 'center' },
     {
-      title: 'Estado',
+      title: 'ESTADO',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => {
-        let color = 'gold';
-        if (status === 'CONFIRMADA') color = 'green';
-        if (status === 'CANCELADA') color = 'red';
-        if (status === 'FINALIZADA') color = 'blue';
-        return <Tag color={color}>{status}</Tag>;
-      },
+      render: (status) => (
+        <Tag color={status === 'CONFIRMADA' ? 'green' : status === 'FINALIZADA' ? 'blue' : 'orange'}>
+          {status}
+        </Tag>
+      ),
     },
     {
-      title: 'Acciones',
+      title: 'ACCIONES',
       key: 'action',
       render: (_, record) => (
         <Space size="middle">
           {record.status === 'CONFIRMADA' && (
-            <Button 
-              type="primary" 
-              size="small" 
-              icon={<LogoutOutlined />}
-              onClick={() => updateStatus(record.id, 'FINALIZADA')}
-              // --- CAMBIO DE COLOR AQUÍ ---
-              style={{ 
-                backgroundColor: '#1890ff', 
-                borderColor: '#1890ff',
-                color: 'white' 
-              }}
+            <Popconfirm 
+              title="¿Finalizar esta reserva?" 
+              onConfirm={() => updateStatus(record.id, 'FINALIZADA')}
+              okText="Sí, finalizar"
+              cancelText="No"
             >
-              Finalizar
-            </Button>
+              <Button 
+                type="primary" 
+                size="small" 
+                icon={<LogoutOutlined />}
+                style={{ display: 'flex', alignItems: 'center' }}
+              > 
+                Finalizar 
+              </Button>
+            </Popconfirm>
           )}
-          {['CONFIRMADA', 'PENDIENTE'].includes(record.status) && (
-            <Popconfirm
-              title="¿Cancelar reserva?"
-              onConfirm={() => updateStatus(record.id, 'CANCELADA')}
-            >
-              <Button type="text" danger size="small" icon={<CloseCircleOutlined />}>
+          
+          {(record.status === 'CONFIRMADA' || record.status === 'PENDIENTE') && (
+            <Popconfirm title="¿Cancelar reserva?" onConfirm={() => updateStatus(record.id, 'CANCELADA')}>
+              <Button type="text" danger size="small" icon={<CloseCircleOutlined />} style={{ display: 'flex', alignItems: 'center' }}>
                 Cancelar
               </Button>
             </Popconfirm>
@@ -146,22 +160,24 @@ const BookingsPage = () => {
 
   return (
     <div style={{ padding: '24px' }}>
-      <Card bordered={false} style={{ borderRadius: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+      <Card bordered={false} style={{ borderRadius: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
             <Title level={3} style={{ margin: 0 }}>Gestión de Reservas</Title>
-            <Text type="secondary">Visualizando tus registros actuales e históricos.</Text>
+            <Text type="secondary">
+              {showHistory ? "Historial completo." : "Reservas activas y de hoy."}
+            </Text>
           </div>
-          
           <Space>
             <Button 
+              type={showHistory ? "default" : "primary"}
               icon={showHistory ? <EyeOutlined /> : <HistoryOutlined />}
               onClick={() => setShowHistory(!showHistory)}
-              type={showHistory ? "primary" : "default"}
+              style={!showHistory ? { background: '#8b4513', color: 'white' } : {}}
             >
-              {showHistory ? "Ver Solo Activas" : "Ver Historial"}
+              {showHistory ? "Ver Solo Hoy" : "Ver Historial Completo"}
             </Button>
-            <Button icon={<SyncOutlined spin={loading} />} onClick={fetchBookings}>Actualizar</Button>
+            <Button icon={<SyncOutlined spin={loading} />} onClick={() => fetchBookings(showHistory)}>Actualizar</Button>
           </Space>
         </div>
 
@@ -170,7 +186,7 @@ const BookingsPage = () => {
           dataSource={bookings} 
           rowKey="id" 
           loading={loading}
-          pagination={{ pageSize: 8 }}
+          pagination={{ pageSize: 7 }}
         />
       </Card>
     </div>

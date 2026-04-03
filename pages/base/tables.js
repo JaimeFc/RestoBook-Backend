@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Dashboard from '@ui/layout/Dashboard';
 import { 
   Button, Tag, Space, Typography, Card, Table, Modal, 
-  Form, InputNumber, message, Select, Popconfirm, Switch 
+  Form, InputNumber, message, Select, Popconfirm, Divider 
 } from 'antd';
 import { 
   PlusOutlined, CoffeeOutlined, EnvironmentOutlined, 
@@ -20,17 +20,23 @@ const TablesManager = () => {
   const [editingTable, setEditingTable] = useState(null);
   const [form] = Form.useForm();
 
-  // Traer mesas (sin filtros restrictivos desde el backend idealmente)
   const fetchTables = useCallback(async () => {
     setLoading(true);
     try {
-      // Usamos la API que creamos para el mapa o la general de tablas
-      const response = await fetch('/api/table'); 
-      const data = await response.json();
+      const response = await fetch('/api/tables'); 
+      const result = await response.json();
+      
       if (response.ok) {
+        const data = Array.isArray(result) ? result : (result.data || []);
         setDataSource(data);
       } else {
-        message.error('Error al cargar datos');
+        const responseAlt = await fetch('/api/table');
+        const dataAlt = await responseAlt.json();
+        if (responseAlt.ok) {
+          setDataSource(Array.isArray(dataAlt) ? dataAlt : (dataAlt.data || []));
+        } else {
+          message.error('Error al cargar mesas del servidor');
+        }
       }
     } catch (error) {
       message.error('Error de conexión con el servidor');
@@ -45,7 +51,7 @@ const TablesManager = () => {
     setEditingTable(record);
     form.setFieldsValue({
       ...record,
-      active: record.active ?? true // Aseguramos que el switch tenga valor
+      active: record.active ?? true 
     });
     setIsModalVisible(true);
   };
@@ -64,8 +70,7 @@ const TablesManager = () => {
 
   const onFinish = async (values) => {
     const isEditing = !!editingTable;
-    // Si es edición usamos el ID en el query o body según tu API
-    const url = isEditing ? `/api/table?id=${editingTable.id}` : '/api/table';
+    const url = isEditing ? `/api/tables?id=${editingTable.id}` : '/api/tables';
     const method = isEditing ? 'PUT' : 'POST';
 
     try {
@@ -74,14 +79,13 @@ const TablesManager = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...values,
-          // Forzamos conversión a número para evitar errores de Prisma/DB
           number: parseInt(values.number),
           capacity: parseInt(values.capacity)
         }),
       });
 
       if (response.ok) {
-        message.success(isEditing ? 'Mesa actualizada con éxito' : 'Nueva mesa creada');
+        message.success(isEditing ? 'Mesa actualizada' : 'Mesa creada');
         handleCancel();
         fetchTables();
       } else {
@@ -89,19 +93,19 @@ const TablesManager = () => {
         message.error(res.error || 'Error en la operación');
       }
     } catch (error) {
-      message.error('Error de red al procesar la solicitud');
+      message.error('Error de red');
     }
   };
 
   const handleDelete = async (id) => {
     try {
-      const response = await fetch(`/api/table?id=${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/tables?id=${id}`, { method: 'DELETE' });
       if (response.ok) {
-        message.success('Mesa eliminada del sistema');
+        message.success('Mesa eliminada');
         fetchTables();
       }
     } catch (error) {
-      message.error('No se pudo eliminar la mesa');
+      message.error('No se pudo eliminar');
     }
   };
 
@@ -111,51 +115,60 @@ const TablesManager = () => {
       dataIndex: 'number',
       key: 'number',
       sorter: (a, b) => a.number - b.number,
-      render: (num) => <Tag color="volcano" style={{ fontWeight: 'bold' }}>Mesa {num}</Tag>,
+      // Color café para las etiquetas de mesa
+      render: (num) => <Tag color="#8b4513" style={{ fontWeight: 'bold', borderRadius: '4px' }}>Mesa {num}</Tag>,
     },
     {
       title: 'UBICACIÓN',
       dataIndex: 'location',
       key: 'location',
-      render: (loc) => <Space><EnvironmentOutlined style={{ color: '#8b4513' }} /> {loc}</Space>,
+      render: (loc) => (
+        <Space>
+          <EnvironmentOutlined style={{ color: '#8b4513' }} /> 
+          <Text strong style={{ color: '#555' }}>{loc || 'Sin asignar'}</Text>
+        </Space>
+      ),
     },
     {
       title: 'CAPACIDAD',
       dataIndex: 'capacity',
       key: 'capacity',
       align: 'center',
-      render: (cap) => <Text strong>{cap} Pax</Text>,
+      render: (cap) => <Badge count={`${cap} Pax`} style={{ backgroundColor: '#52c41a' }} />,
     },
     {
       title: 'ESTADO',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => (
-        <Tag color={status === 'available' ? 'green' : 'red'} icon={status === 'available' ? <CheckCircleOutlined /> : <StopOutlined />}>
-          {status === 'available' ? 'DISPONIBLE' : 'OCUPADA'}
-        </Tag>
-      ),
-    },
-    {
-      title: 'VISIBILIDAD',
-      dataIndex: 'active',
-      key: 'active',
-      render: (active) => (
-        <Tag color={active ? 'blue' : 'default'}>
-          {active ? 'ACTIVA' : 'INACTIVA'}
-        </Tag>
-      ),
+      render: (status) => {
+        const isAvailable = status === 'available';
+        return (
+          <Tag 
+            color={isAvailable ? 'success' : 'error'} 
+            icon={isAvailable ? <CheckCircleOutlined /> : <StopOutlined />}
+            style={{ padding: '2px 10px', borderRadius: '12px' }}
+          >
+            {isAvailable ? 'DISPONIBLE' : 'OCUPADA'}
+          </Tag>
+        );
+      },
     },
     {
       title: 'ACCIONES',
       key: 'actions',
       render: (_, record) => (
         <Space size="middle">
-          <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} style={{ color: '#1890ff' }}>
+          <Button 
+            type="primary" 
+            size="small"
+            icon={<EditOutlined />} 
+            onClick={() => handleEdit(record)} 
+            style={{ backgroundColor: '#1890ff', borderColor: '#1890ff', borderRadius: '6px' }}
+          >
             Editar
           </Button>
           <Popconfirm 
-            title="¿Estás seguro de eliminar esta mesa?" 
+            title="¿Eliminar esta mesa?" 
             onConfirm={() => handleDelete(record.id)}
             okText="Eliminar"
             cancelText="Cancelar"
@@ -178,14 +191,14 @@ const TablesManager = () => {
             type="primary" 
             icon={<PlusOutlined />} 
             onClick={showModal} 
-            style={{ background: '#8b4513', borderColor: '#8b4513', borderRadius: '8px' }}
+            style={{ background: '#8b4513', borderColor: '#8b4513', borderRadius: '8px', height: '40px' }}
           >
             AÑADIR MESA
           </Button>
         </Space>
       </div>
 
-      <Card bordered={false} style={{ borderRadius: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+      <Card bordered={false} style={{ borderRadius: '16px', boxShadow: '0 8px 24px rgba(0,0,0,0.05)' }}>
         <Table 
           columns={columns} 
           dataSource={dataSource} 
@@ -196,29 +209,26 @@ const TablesManager = () => {
       </Card>
 
       <Modal 
-        title={editingTable ? "🔧 Modificar Parámetros de Mesa" : "✨ Registrar Nueva Mesa"} 
+        title={editingTable ? "🔧 Modificar Mesa" : "✨ Nueva Mesa"} 
         open={isModalVisible} 
         onCancel={handleCancel} 
         footer={null}
         destroyOnClose
+        centered
       >
-        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ active: true, status: 'available' }}>
-          <Space style={{ display: 'flex' }} align="baseline">
-            <Form.Item label="Número" name="number" rules={[{ required: true, message: 'Requerido' }]}>
-              <InputNumber min={1} style={{ width: '100%' }} placeholder="Ej: 5" /> 
+        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ status: 'available' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <Form.Item label="Número de Mesa" name="number" rules={[{ required: true, message: 'Falta número' }]}>
+              <InputNumber min={1} style={{ width: '100%' }} placeholder="Ej: 1" /> 
             </Form.Item>
 
-            <Form.Item label="Capacidad" name="capacity" rules={[{ required: true, message: 'Requerido' }]}>
-              <InputNumber min={1} max={20} style={{ width: '100%' }} placeholder="Pax" />
+            <Form.Item label="Capacidad (Pax)" name="capacity" rules={[{ required: true, message: 'Falta capacidad' }]}>
+              <InputNumber min={1} max={20} style={{ width: '100%' }} placeholder="Ej: 4" />
             </Form.Item>
-            
-            <Form.Item label="¿Visible/Activa?" name="active" valuePropName="checked">
-              <Switch checkedChildren="SÍ" unCheckedChildren="NO" />
-            </Form.Item>
-          </Space>
+          </div>
 
-          <Form.Item label="Ubicación o Zona" name="location" rules={[{ required: true, message: 'Selecciona zona' }]}>
-            <Select placeholder="Selecciona dónde se ubica">
+          <Form.Item label="Ubicación o Zona" name="location" rules={[{ required: true, message: 'Seleccione zona' }]}>
+            <Select placeholder="Selecciona zona">
               <Option value="Terraza">🍀 Terraza</Option>
               <Option value="Centro">🏠 Salón Principal</Option>
               <Option value="VIP">💎 Zona VIP</Option>
@@ -227,21 +237,23 @@ const TablesManager = () => {
             </Select>
           </Form.Item>
 
-          {editingTable && (
-            <Form.Item label="Estado Operativo" name="status">
-              <Select>
-                <Option value="available">🟢 Disponible (Libre)</Option>
-                <Option value="occupied">🔴 Ocupada (En servicio)</Option>
-              </Select>
-            </Form.Item>
-          )}
+          <Form.Item label="Estado Inicial" name="status">
+            <Select>
+              <Option value="available">🟢 Disponible</Option>
+              <Option value="occupied">🔴 Ocupada</Option>
+            </Select>
+          </Form.Item>
 
           <Divider style={{ margin: '12px 0' }} />
 
           <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
             <Space>
-              <Button onClick={handleCancel}>Cancelar</Button>
-              <Button type="primary" htmlType="submit" style={{ background: '#8b4513', borderColor: '#8b4513' }}>
+              <Button onClick={handleCancel} style={{ borderRadius: '6px' }}>Cancelar</Button>
+              <Button 
+                type="primary" 
+                htmlType="submit" 
+                style={{ background: '#8b4513', borderColor: '#8b4513', borderRadius: '6px' }}
+              >
                 {editingTable ? 'Guardar Cambios' : 'Crear Mesa'}
               </Button>
             </Space>
@@ -251,9 +263,6 @@ const TablesManager = () => {
     </div>
   );
 };
-
-// Componente Divider simple (si no quieres importarlo de antd)
-const Divider = ({ style }) => <div style={{ borderTop: '1px solid #f0f0f0', width: '100%', ...style }} />;
 
 TablesManager.Layout = Dashboard;
 export default TablesManager;

@@ -1,92 +1,47 @@
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+const prisma = global.prisma || new PrismaClient();
+if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 
 export default async function handler(req, res) {
-  const { method } = req;
-  const { id } = req.query; // Para capturar el ID en DELETE o PUT
+  if (req.method !== 'PUT') return res.status(405).json({ message: 'Method not allowed' });
 
-  switch (method) {
-    case 'GET':
-      try {
-        const tables = await prisma.Base_table.findMany({
-          where: { active: true },
-          orderBy: { number: 'asc' }
-        });
-        return res.status(200).json(tables);
-      } catch (error) {
-        return res.status(500).json({ error: "Error al obtener las mesas" });
-      }
+  const { id, status } = req.body;
 
-    case 'POST':
-      try {
-        const { number, capacity, location, restaurantId } = req.body;
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Actualizamos la reserva
+      // Usamos el nombre que Prisma genera por defecto: base_booking
+      const updatedBooking = await tx.base_booking.update({
+        where: { id: Number(id) },
+        data: { status: status },
+      });
 
-        if (!number || !capacity || !location) {
-          return res.status(400).json({ error: "Número, capacidad y ubicación son obligatorios" });
+      // 2. Intentamos actualizar la mesa (solo si tiene un tableId válido)
+      if (updatedBooking.tableId) {
+        try {
+          await tx.base_table.update({
+            where: { id: updatedBooking.tableId },
+            data: { 
+              status: (status === 'FINALIZADA' || status === 'CANCELADA') ? 'available' : 'occupied' 
+            },
+          });
+        } catch (tableError) {
+          console.error("La mesa no existe o no se pudo actualizar:", tableError.message);
+          // No lanzamos error aquí para que al menos la reserva SÍ se guarde
         }
-
-        const newTable = await prisma.Base_table.create({
-          data: {
-            number: parseInt(number), 
-            capacity: parseInt(capacity),
-            location: location,
-            status: "available",
-            active: true,
-            restaurant: {
-              connect: { id: restaurantId ? parseInt(restaurantId) : 1 }
-            }
-          }
-        });
-
-        // Enviamos el objeto creado para que el frontend confirme el éxito
-        return res.status(201).json(newTable);
-      } catch (error) {
-        console.error("Error completo:", error);
-        if (error.code === 'P2002') {
-          return res.status(400).json({ error: `El número de mesa ${req.body.number} ya existe` });
-        }
-        if (error.code === 'P2025') {
-          return res.status(400).json({ error: "El restaurante de referencia no existe." });
-        }
-        return res.status(500).json({ error: "Error al crear la mesa" });
       }
 
-    case 'DELETE':
-      try {
-        if (!id) return res.status(400).json({ error: "ID requerido" });
+      return updatedBooking;
+    });
 
-        // Hacemos un "Borrado Lógico" (active: false) para no romper el historial de reservas
-        await prisma.Base_table.update({
-          where: { id: parseInt(id) },
-          data: { active: false }
-        });
+    return res.status(200).json({ success: true, data: result });
 
-        return res.status(200).json({ message: "Mesa eliminada correctamente" });
-      } catch (error) {
-        console.error("Error al eliminar:", error);
-        return res.status(500).json({ error: "No se pudo eliminar la mesa" });
-      }
-
-    case 'PUT':
-      try {
-        const { number, capacity, location, status } = req.body;
-        const updatedTable = await prisma.Base_table.update({
-          where: { id: parseInt(id) },
-          data: {
-            number: number ? parseInt(number) : undefined,
-            capacity: capacity ? parseInt(capacity) : undefined,
-            location,
-            status
-          }
-        });
-        return res.status(200).json(updatedTable);
-      } catch (error) {
-        return res.status(500).json({ error: "Error al actualizar la mesa" });
-      }
-
-    default:
-      res.setHeader('Allow', ['GET', 'POST', 'DELETE', 'PUT']);
-      return res.status(405).end(`Method ${method} Not Allowed`);
+  } catch (error) {
+    console.error("Error fatal:", error.message);
+    return res.status(400).json({ 
+      success: false, 
+      message: "Error al procesar: " + error.message 
+    });
   }
 }

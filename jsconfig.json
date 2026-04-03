@@ -2,6 +2,7 @@
   "compilerOptions": {
     "allowJs": true,
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0", // Añade esta línea aquí
     "paths": {
       "@material-ui/core": ["ui/common/mui/index.js"],
       "@material-ui/core/*": ["ui/common/mui/*"],

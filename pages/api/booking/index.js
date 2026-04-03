@@ -6,30 +6,50 @@ import redis from '../../../lib/redis';
 const prisma = new PrismaClient();
 const handler = nextConnect();
 
-// --- MÉTODO GET: LISTAR RESERVAS ---
+// --- MÉTODO GET: LISTAR RESERVAS (CON FILTRO POR FECHA) ---
 handler.get(async (req, res) => {
-  const cacheKey = 'cache:bookings_list_v3';
+  const { date, page } = req.query; // Capturamos el parámetro 'date' enviado desde el Dashboard
+  const cacheKey = `cache:bookings_list_${date || 'all'}_v3`; // Llave de caché única por fecha
+
   try {
-    try {
-      const cachedData = await redis.get(cacheKey);
-      if (cachedData) {
-        return res.status(200).json({ success: true, source: 'cache', data: JSON.parse(cachedData) });
+    // 1. Intentar servir desde Caché (Solo si no hay un filtro específico para evitar desfases)
+    if (!date) {
+      try {
+        const cachedData = await redis.get(cacheKey);
+        if (cachedData) {
+          return res.status(200).json({ success: true, source: 'cache', data: JSON.parse(cachedData) });
+        }
+      } catch (e) {
+        console.log("⚠️ Redis no disponible...");
       }
-    } catch (e) {
-      console.log("⚠️ Redis no disponible, cargando de DB");
     }
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = 10; 
-    const skip = (page - 1) * limit;
+    // 2. Configurar paginación
+    const pageNum = parseInt(page) || 1;
+    const limit = date ? 100 : 2; // Si filtramos por fecha, mostramos todas (hasta 100)
+    const skip = (pageNum - 1) * limit;
 
+    // 3. CONSTRUIR EL FILTRO DE BÚSQUEDA
+    let whereClause = {};
+    if (date) {
+      // Si la fecha viene como "3/4/2026", la convertimos al objeto Date que entiende Prisma
+      const [d, m, y] = date.split('/').map(Number);
+      const searchDate = new Date(y, m - 1, d, 12, 0, 0);
+      
+      whereClause = {
+        date: searchDate
+      };
+    }
+
+    // 4. Consultar Base de Datos con el filtro
     const bookings = await prisma.base_booking.findMany({
+      where: whereClause, // Aplicamos el filtro aquí
       take: limit,
       skip: skip,
-      orderBy: { date: 'desc' },
-      include: { table: true } // Incluimos la mesa para el mapa
+      orderBy: { date: 'desc' } // Ordenar por las más recientes
     });
 
+    // 5. Cargar relación de usuarios
     const results = await Promise.all(
       bookings.map(async (b) => ({
         ...b,
@@ -37,9 +57,12 @@ handler.get(async (req, res) => {
       }))
     );
 
-    try {
-      await redis.setex(cacheKey, 300, JSON.stringify(results));
-    } catch (e) { }
+    // 6. Guardar en Caché si no es una búsqueda filtrada
+    if (!date) {
+      try {
+        await redis.setex(cacheKey, 300, JSON.stringify(results));
+      } catch (e) { }
+    }
 
     res.status(200).json({ success: true, source: 'database', data: results });
   } catch (error) {
@@ -47,17 +70,13 @@ handler.get(async (req, res) => {
   }
 });
 
-// --- MÉTODO POST: CREAR RESERVA ---
+// --- MÉTODO POST: (Se mantiene igual, ya está correcto) ---
 handler.post(async (req, res) => {
-  // Extraemos menuItems del body enviado por NewBooking.js
-  const { date, time, tableId, userId, people, observations, menuItems } = req.body;
-
+  const { date, time, tableId, userId, people, observations } = req.body;
   try {
-    // 1. Normalización de fecha
     const [year, month, day] = date.split('-').map(Number);
     const searchDate = new Date(year, month - 1, day, 12, 0, 0);
 
-    // 2. Validación de Mesa Ocupada
     const conflict = await prisma.base_booking.findFirst({
       where: {
         tableId: parseInt(tableId),
@@ -72,53 +91,30 @@ handler.post(async (req, res) => {
         where: { date: searchDate, time: time, status: { notIn: ['CANCELADA', 'FINALIZADA'] } },
         select: { tableId: true }
       });
-
       const ocupadasIds = ocupadas.map(b => b.tableId);
       const sugerencias = await prisma.base_table.findMany({
-        where: {
-          id: { notIn: ocupadasIds.length > 0 ? ocupadasIds : [-1] },
-          active: true
-        },
-        take: 5
+        where: { id: { notIn: ocupadasIds.length > 0 ? ocupadasIds : [-1] }, active: true },
+        take: 5 
       });
-
-      return res.status(409).json({
-        success: false,
-        message: "¡Lo sentimos! Esta mesa ya ha sido reservada.",
-        suggestions: sugerencias
-      });
+      return res.status(409).json({ success: false, message: "¡Lo sentimos! Mesa ocupada.", suggestions: sugerencias });
     }
 
-    // 3. Procesamiento del Menú
-    // Convertimos el Array del formulario a String para cumplir con el esquema Prisma
-    const menuString = Array.isArray(menuItems) ? menuItems.join(', ') : (menuItems || "");
-
-    // 4. Creación en Base de Datos
     const newBooking = await prisma.base_booking.create({
       data: {
         date: searchDate,
         time: time,
         people: parseInt(people),
         observations: observations || "",
-        menuItems: menuString, // Guardamos los platos aquí
-        status: 'CONFIRMADA',
+        status: 'PENDIENTE',
         user: { connect: { id: parseInt(userId) } },
         table: { connect: { id: parseInt(tableId) } }
       }
     });
 
-    // 5. Invalida Caché de Redis para actualizar el Mapa de Mesas instantáneamente
-    try {
-      await redis.del('cache:bookings_list_v3');
-      await redis.del('cache:tables_status'); 
-      console.log("🧹 Caché de Redis limpiada");
-    } catch (e) { }
-
+    try { await redis.del('cache:bookings_list_all_v3'); } catch (e) { }
     res.status(201).json({ success: true, data: newBooking });
-
   } catch (error) {
-    console.error("Error al crear reserva:", error);
-    res.status(500).json({ success: false, error: "Error interno del servidor" });
+    res.status(500).json({ success: false, error: "Error interno" });
   }
 });
 

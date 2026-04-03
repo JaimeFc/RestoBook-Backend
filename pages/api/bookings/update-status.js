@@ -1,72 +1,54 @@
 import { PrismaClient } from '@prisma/client';
-import redis from '../../../lib/redis'; // Añadimos redis
+import redisClient, { connectRedis } from '../../../lib/redis';
 
-const prisma = new PrismaClient();
+const prisma = global.prisma || new PrismaClient();
 
 export default async function handler(req, res) {
-  // OBTENER MESAS (GET)
-  if (req.method === 'GET') {
-    const tables = await prisma.Base_table.findMany({
-      where: { active: true }, // Solo mostramos las que no están "borradas"
-      orderBy: { number: 'asc' }
-    });
-    return res.status(200).json(tables);
-  }
+  if (req.method !== 'PUT') return res.status(405).json({ message: 'Method not allowed' });
+  const { id, status } = req.body;
 
-  // EDITAR MESA (PUT)
-  if (req.method === 'PUT') {
-    const { id, number, capacity, location, status, active } = req.body;
-    try {
-      const updated = await prisma.Base_table.update({
-        where: { id: parseInt(id) },
-        data: { 
-          number: parseInt(number), 
-          capacity: parseInt(capacity), 
-          location, 
-          status, 
-          active 
-        }
-      });
-      // Limpiamos caché para actualizar el mapa en vivo y contadores
-      try { await redis.del('cache:bookings_list_v3'); } catch (e) {}
-      return res.status(200).json(updated);
-    } catch (error) {
-      return res.status(400).json({ error: "Error al actualizar la mesa" });
-    }
-  }
+  try {
+    const bookingId = Number(id);
 
-  // CREAR MESA (POST)
-  if (req.method === 'POST') {
-    const { number, capacity, location } = req.body;
-    
-    try {
-      // 1. Validar si ya existe ese número de mesa para evitar errores
-      const existing = await prisma.Base_table.findFirst({
-        where: { number: parseInt(number) }
+    // 1. Actualizar DB
+    const result = await prisma.$transaction(async (tx) => {
+      const booking = await tx.Base_booking.update({
+        where: { id: bookingId },
+        data: { status: status },
       });
 
-      if (existing) {
-        return res.status(400).json({ 
-          error: `La Mesa ${number} ya existe en el sistema (puede estar inactiva).` 
+      // Liberar mesa si se finaliza o cancela
+      if (booking.tableId && (status === 'FINALIZADA' || status === 'CANCELADA')) {
+        await tx.Base_table.update({
+          where: { id: booking.tableId },
+          data: { status: 'available' },
         });
       }
+      return booking;
+    });
 
-      const created = await prisma.Base_table.create({
-        data: { 
-          number: parseInt(number), 
-          capacity: parseInt(capacity), 
-          location, 
-          status: 'available', 
-          active: true 
-        }
-      });
-
-      // Limpiamos caché para que el contador suba (ej: de 6/6 a 7/7)
-      try { await redis.del('cache:bookings_list_v3'); } catch (e) {}
-
-      return res.status(201).json(created);
-    } catch (error) {
-      return res.status(500).json({ error: "No se pudo crear la mesa" });
+    // 2. Limpieza de Caché con verificación de conexión
+    try {
+      await connectRedis(); // Intentamos conectar
+      
+      if (redisClient.isOpen) {
+        // Borramos TODAS las llaves que alimentan el dashboard
+        const keys = [
+          'cache:dashboard_stats',
+          'cache:bookings_list_v3',
+          'cache:tables_all',
+          'dashboard_stats'
+        ];
+        await Promise.all(keys.map(key => redisClient.del(key)));
+        console.log("✅ Caché limpiada con éxito.");
+      }
+    } catch (redisError) {
+      console.error("⚠️ No se pudo limpiar Redis (Servicio caído), el Dashboard podría no actualizarse.");
     }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("❌ Error:", error.message);
+    return res.status(400).json({ success: false, details: error.message });
   }
 }

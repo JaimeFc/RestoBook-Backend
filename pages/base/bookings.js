@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { Table, Tag, Space, Button, Card, Typography, message, Popconfirm, Badge } from 'antd';
+
+import { Table, Tag, Space, Button, Card, Typography, message, Popconfirm, Badge } from 'antd'; 
 import { ClockCircleOutlined, SyncOutlined, LogoutOutlined, HistoryOutlined, EyeOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import Dashboard from '@ui/layout/Dashboard';
+
+
 
 const { Title, Text } = Typography;
 
@@ -15,27 +18,39 @@ const BookingsPage = () => {
   const fetchBookings = useCallback(async (isHistory) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/bookings?limit=200&_t=${Date.now()}`);
+      // Cargamos los datos con un timestamp para evitar caché
+      const res = await fetch(`/api/bookings?limit=500&_t=${Date.now()}`);
       const result = await res.json();
       
       if (res.ok) {
         let data = result.data || result;
         if (!Array.isArray(data)) data = [];
 
+        console.log("Datos brutos recibidos:", data);
+
         if (!isHistory) {
-          const hoy = new Date();
-          const hoyISO = hoy.toISOString().split('T')[0]; 
+          // --- FILTRO DE HOY FLEXIBLE ---
+          // Obtenemos la fecha de hoy en formato YYYY-MM-DD sin problemas de zona horaria
+          const local = new Date();
+          const hoyStr = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
           
           data = data.filter(item => {
+            const status = (item.status || "").toUpperCase().trim();
             const itemDate = item.date ? item.date.toString() : "";
-            // Mantenemos en la lista las que necesitan atención (CONFIRMADA/PENDIENTE)
-            return item.status === 'CONFIRMADA' || item.status === 'PENDIENTE' || itemDate.includes(hoyISO);
+            
+            // CRITERIO: Mostrar si es de hoy O si el estado es CONFIRMADA/PENDIENTE
+            // Esto asegura que la reserva de Angela Lapo no se oculte.
+            const esDeHoy = itemDate.includes(hoyStr);
+            const estaActiva = status === 'CONFIRMADA' || status === 'PENDIENTE';
+            
+            return esDeHoy || estaActiva;
           });
         }
+        
         setBookings(data);
       }
     } catch (error) {
-      console.error(error);
+      console.error("Error cargando reservas:", error);
       message.error("Error al cargar datos");
     } finally {
       setLoading(false);
@@ -53,25 +68,18 @@ const BookingsPage = () => {
       const res = await fetch('/api/bookings/update-status', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          id: id, // El backend debe recibir el ID tal cual viene de la base de datos
-          status: newStatus 
-        }),
+        body: JSON.stringify({ id, status: newStatus }),
       });
-
-      const result = await res.json();
 
       if (res.ok) {
         message.success(`Reserva ${newStatus} correctamente`);
-        // Recarga inmediata para ver los cambios
         fetchBookings(showHistory); 
       } else {
-        // CORRECCIÓN: Mostramos el error real que devuelve la API (muy útil para debug)
-        message.error(result.message || result.details || "Error al actualizar");
-        console.error("Detalle del error:", result);
+        const result = await res.json();
+        message.error(result.message || "Error al actualizar");
       }
     } catch (error) {
-      message.error("Error de conexión con el servidor");
+      message.error("Error de conexión");
     } finally {
       hide();
     }
@@ -106,7 +114,6 @@ const BookingsPage = () => {
       render: (_, record) => (
         <Space direction="vertical" size={0}>
           <Text strong style={{ color: '#1890ff' }}>
-            {/* Formateo de fecha más seguro */}
             {record.date ? new Date(record.date).toLocaleDateString() : '---'}
           </Text>
           <Text type="secondary"><ClockCircleOutlined /> {record.time}</Text>
@@ -117,44 +124,50 @@ const BookingsPage = () => {
       title: 'ESTADO',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => (
-        <Tag color={status === 'CONFIRMADA' ? 'green' : status === 'FINALIZADA' ? 'blue' : 'orange'}>
-          {status}
-        </Tag>
-      ),
+      render: (status) => {
+        const s = (status || "").toUpperCase().trim();
+        let color = 'orange';
+        if (s === 'CONFIRMADA') color = 'green';
+        if (s === 'FINALIZADA') color = 'blue';
+        if (s === 'CANCELADA') color = 'red';
+        return <Tag color={color}>{s}</Tag>;
+      },
     },
     {
       title: 'ACCIONES',
       key: 'action',
-      render: (_, record) => (
-        <Space size="middle">
-          {record.status === 'CONFIRMADA' && (
-            <Popconfirm 
-              title="¿Finalizar esta reserva?" 
-              onConfirm={() => updateStatus(record.id, 'FINALIZADA')}
-              okText="Sí, finalizar"
-              cancelText="No"
-            >
-              <Button 
-                type="primary" 
-                size="small" 
-                icon={<LogoutOutlined />}
-                style={{ display: 'flex', alignItems: 'center' }}
-              > 
-                Finalizar 
-              </Button>
-            </Popconfirm>
-          )}
-          
-          {(record.status === 'CONFIRMADA' || record.status === 'PENDIENTE') && (
-            <Popconfirm title="¿Cancelar reserva?" onConfirm={() => updateStatus(record.id, 'CANCELADA')}>
-              <Button type="text" danger size="small" icon={<CloseCircleOutlined />} style={{ display: 'flex', alignItems: 'center' }}>
-                Cancelar
-              </Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
+      render: (_, record) => {
+        const s = (record.status || "").toUpperCase().trim();
+        return (
+          <Space size="middle">
+            {s === 'CONFIRMADA' && (
+              <Popconfirm 
+                title="¿Finalizar esta reserva?" 
+                onConfirm={() => updateStatus(record.id, 'FINALIZADA')}
+                okText="Sí"
+                cancelText="No"
+              >
+                <Button 
+                  type="primary" 
+                  size="small" 
+                  icon={<LogoutOutlined />}
+                  style={{ display: 'flex', alignItems: 'center', backgroundColor: '#52c41a', borderColor: '#52c41a' }}
+                > 
+                  Finalizar 
+                </Button>
+              </Popconfirm>
+            )}
+            
+            {(s === 'CONFIRMADA' || s === 'PENDIENTE') && (
+              <Popconfirm title="¿Cancelar reserva?" onConfirm={() => updateStatus(record.id, 'CANCELADA')}>
+                <Button type="text" danger size="small" icon={<CloseCircleOutlined />} style={{ display: 'flex', alignItems: 'center' }}>
+                  Cancelar
+                </Button>
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -165,7 +178,7 @@ const BookingsPage = () => {
           <div>
             <Title level={3} style={{ margin: 0 }}>Gestión de Reservas</Title>
             <Text type="secondary">
-              {showHistory ? "Historial completo." : "Reservas activas y de hoy."}
+              {showHistory ? "Historial completo de todas las reservas." : "Mostrando reservas activas para hoy."}
             </Text>
           </div>
           <Space>

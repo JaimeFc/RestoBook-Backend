@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import redis from '../../../lib/redis'; 
 
 const prisma = global.prisma || new PrismaClient();
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
@@ -9,39 +10,52 @@ export default async function handler(req, res) {
   const { id, status } = req.body;
 
   try {
+    const bookingId = Number(id);
+
+    // 1. Buscamos la reserva usando el modelo con Mayúscula
+    const booking = await prisma.Base_booking.findUnique({
+      where: { id: bookingId },
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Reserva no encontrada" });
+    }
+
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Actualizamos la reserva
-      // Usamos el nombre que Prisma genera por defecto: base_booking
-      const updatedBooking = await tx.base_booking.update({
-        where: { id: Number(id) },
+      // 2. Actualizamos la reserva
+      const updated = await tx.Base_booking.update({
+        where: { id: bookingId },
         data: { status: status },
       });
 
-      // 2. Intentamos actualizar la mesa (solo si tiene un tableId válido)
-      if (updatedBooking.tableId) {
-        try {
-          await tx.base_table.update({
-            where: { id: updatedBooking.tableId },
-            data: { 
-              status: (status === 'FINALIZADA' || status === 'CANCELADA') ? 'available' : 'occupied' 
-            },
-          });
-        } catch (tableError) {
-          console.error("La mesa no existe o no se pudo actualizar:", tableError.message);
-          // No lanzamos error aquí para que al menos la reserva SÍ se guarde
-        }
+      // 3. Liberamos la mesa si existe
+      if (booking.tableId) {
+        const tableStatus = (status === 'FINALIZADA' || status === 'CANCELADA') ? 'available' : 'occupied';
+        
+        await tx.Base_table.update({
+          where: { id: booking.tableId },
+          data: { status: tableStatus },
+        });
       }
 
-      return updatedBooking;
+      return updated;
     });
+
+    // 4. Limpiamos Redis para que el mapa se actualice
+    try {
+      await redis.del('cache:bookings_list_v3');
+    } catch (redisError) {
+      console.log("Redis no disponible, ignorando...");
+    }
 
     return res.status(200).json({ success: true, data: result });
 
   } catch (error) {
-    console.error("Error fatal:", error.message);
+    console.error("ERROR EN DB:", error);
     return res.status(400).json({ 
       success: false, 
-      message: "Error al procesar: " + error.message 
+      message: "Error de base de datos", 
+      details: error.message 
     });
   }
 }

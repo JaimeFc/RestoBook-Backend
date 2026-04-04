@@ -1,37 +1,25 @@
 import { PrismaClient } from '@prisma/client';
-
 const prisma = new PrismaClient();
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Método no permitido' });
-  }
+  if (req.method !== 'GET') return res.status(405).json({ message: 'No' });
 
   try {
     const tables = await prisma.Base_table.findMany({
-      where: { 
-        active: true 
-      },
+      where: { active: true },
       include: {
-        // Esto nos permitirá saber quién está sentado si la mesa está ocupada
         bookings: {
+          // Quitamos el filtro de fecha de aquí para que no de errores
           where: { status: 'CONFIRMADA' },
           include: {
-            user: {
-              include: { Person: true }
-            }
-          },
-          take: 1 // Solo la reserva actual
+            user: { include: { Person: true } },
+          }
         }
       },
-      orderBy: { 
-        number: 'asc' 
-      }
+      orderBy: { number: 'asc' }
     });
-
     res.status(200).json(tables);
   } catch (error) {
-    console.error("Error en API de mesas:", error);
     res.status(500).json({ error: error.message });
   } finally {
     await prisma.$disconnect();

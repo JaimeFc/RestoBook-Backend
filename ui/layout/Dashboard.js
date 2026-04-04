@@ -131,14 +131,11 @@ const Dashboard = (props) => {
 
       <Layout>
         <Main open={open}>
-          {/* MODIFICACIÓN DE SEGURIDAD:
-              Pasamos 'stats' solo si el rol es 'admin'. 
-              De lo contrario, pasamos null para que Angela no vea datos globales.
-          */}
           {cloneElement(props.children, { 
-            stats: user?.role === 'admin' ? stats : null,
-            user: user 
-          })}
+         // Mantenemos tu lógica de stats pero pasamos el user completo
+          stats: user?.role === 'admin' ? stats : null,
+          user: user 
+  })}
         </Main>
       </Layout>
     </Layout>

@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import redis from '../../../lib/redis';
 
-const prisma = new PrismaClient();
+const prisma = global.prisma || new PrismaClient();
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false });
@@ -12,12 +12,11 @@ export default async function handler(req, res) {
     const numPeople = parseInt(people) || 1;
     const [year, month, day] = date.split('-').map(Number);
     
-    // Forzamos la fecha a mediodía (12:00) para que coincida exactamente con lo que hay en la BD
-    // y evitar que por horas de diferencia parezcan días distintos.
+    // Configuración de fecha para evitar desfases
     const searchDate = new Date(year, month - 1, day, 12, 0, 0, 0);
     const cleanTime = time.trim().substring(0, 5); 
 
-    // 1. BUSCAR CONFLICTO (Validación estricta)
+    // 1. VALIDACIÓN DE CONFLICTOS (Evitar doble reserva)
     const conflict = await prisma.base_booking.findFirst({
       where: {
         tableId: Number(tableId),
@@ -28,7 +27,6 @@ export default async function handler(req, res) {
     });
 
     if (conflict) {
-      // Si hay conflicto, buscamos qué otras mesas están ocupadas para sugerir
       const occupiedInThisSlot = await prisma.base_booking.findMany({
         where: { 
           date: searchDate, 
@@ -57,26 +55,53 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. CREACIÓN (Doble Check: Si Prisma falla aquí, lanzará un error)
-    const newBooking = await prisma.base_booking.create({
-      data: {
-        date: searchDate,
-        time: cleanTime,
-        people: numPeople,
-        observations: observations || "",
-        menuItems: menu || "", 
-        status: 'CONFIRMADA',
-        userId: parseInt(userId),
-        tableId: parseInt(tableId)
-      }
+    // 2. OPERACIÓN ATÓMICA: CREAR RESERVA + ACTUALIZAR ESTADO DE MESA
+    // Usamos $transaction para que ambos cambios ocurran al mismo tiempo
+    const result = await prisma.$transaction(async (tx) => {
+      
+      // A. Crear el registro de la reserva
+      const newBooking = await tx.base_booking.create({
+        data: {
+          date: searchDate,
+          time: cleanTime,
+          people: numPeople,
+          observations: observations || "",
+          menuItems: menu || "", 
+          status: 'CONFIRMADA',
+          userId: parseInt(userId),
+          tableId: parseInt(tableId)
+        }
+      });
+
+      // B. ACTUALIZAR LA MESA: Cambiar de 'available' a 'occupied'
+      // Esto es lo que permite que el Dashboard reste la mesa disponible
+      await tx.base_table.update({
+        where: { id: parseInt(tableId) },
+        data: { status: 'occupied' } 
+      });
+
+      return newBooking;
     });
 
-    try { await redis.del('cache:bookings_list_v3'); } catch (e) {}
+    // 3. LIMPIEZA DE CACHÉ (Redis)
+    try { 
+      await redis.del('cache:bookings_list_v3'); 
+    } catch (e) {
+      console.warn("Redis no disponible, continuando...");
+    }
 
-    return res.status(201).json({ success: true, data: newBooking });
+    // 4. RESPUESTA AL FRONTEND
+    return res.status(201).json({ 
+      success: true, 
+      message: "Reserva creada y mesa marcada como ocupada",
+      data: result 
+    });
 
   } catch (error) {
-    console.error("ERROR AL CREAR:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("ERROR CRÍTICO EN CREACIÓN:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Error interno: " + error.message 
+    });
   }
 }

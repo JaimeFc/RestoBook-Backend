@@ -1,7 +1,7 @@
-import { Row, Col, Card, Typography, Space, Avatar } from 'antd';
+import { Row, Col, Card, Typography, Space, Avatar, Button } from 'antd';
 import { 
   CloudOutlined, DashboardOutlined, CalendarOutlined, 
-  ShopOutlined, PieChartOutlined, UserAddOutlined 
+  ShopOutlined, PieChartOutlined, ReloadOutlined 
 } from '@ant-design/icons';
 import Dashboard from '@ui/layout/Dashboard';
 import Loading from '@ui/common/Loading';
@@ -40,85 +40,95 @@ const Home = () => {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false); // Estado para el botón de recarga
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentDateFilter, setCurrentDateFilter] = useState(''); 
   
   const [stats, setStats] = useState({
-    totalMesas: 6,
-    disponibles: 6,
+    totalMesas: 7,
+    disponibles: 7,
     reservasHoy: 0,
     ocupacion: 0
   });
 
-  const loadData = useCallback(async () => {
+  // Función de carga de datos separada para poder reutilizarla
+  const fetchStats = useCallback(async (showLoading = false) => {
+    if (showLoading) setRefreshing(true);
     try {
-      const userData = await authService.user();
-      setUser(userData);
-      const checkAdmin = userData?.Role?.code === 'administrator' || userData?.roleId === 2;
-      setIsAdmin(checkAdmin);
-
-      // --- 1. DETECCIÓN DE FECHA (Hoy es 3/4/2026) ---
-      const hoy = new Date();
-      const fechaAPI = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-      const dia = hoy.getDate();
-      const mes = hoy.getMonth() + 1;
-      const anio = hoy.getFullYear();
-      
-      // Este es el formato que tu DB entiende: "3/4/2026"
-      const fechaDB = `${dia}/${mes}/${anio}`;
-      setCurrentDateFilter(fechaDB); 
-
-      // --- 2. LLAMADAS A LAS APIS ---
-      const [resBookings] = await Promise.all([
-        fetch('/api/bookings?limit=100')
-      ]);
-
-      if (resBookings.ok) {
-        const data = await resBookings.json();
-        const allBookings = data.data || data.rows || (Array.isArray(data) ? data : []);
-        
-        // Filtrado local para el contador de la Card
-        const reservasHoy = allBookings.filter(b => {
-          const fechaReserva = (b.date || "").toString();
-          return fechaReserva.includes(fechaDB) || fechaReserva.includes(fechaAPI);
-        });
-
-        const total = 6;
-        const count = reservasHoy.length;
-
+      const resStats = await fetch('/api/dashboard/stats');
+      if (resStats.ok) {
+        const data = await resStats.json();
         setStats({
-          totalMesas: total,
-          disponibles: Math.max(0, total - count),
-          reservasHoy: count,
-          ocupacion: Math.round((count / total) * 100)
+          totalMesas: data.totalMesas,
+          disponibles: data.mesasDisponibles,
+          reservasHoy: data.reservasHoy,
+          ocupacion: data.ocupacion
         });
       }
     } catch (e) {
-      console.error("Error cargando Dashboard:", e);
+      console.error("Error al sincronizar estadísticas:", e);
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  const loadInitialData = useCallback(async () => {
+    try {
+      const userData = await authService.user();
+      setUser(userData);
+      setIsAdmin(userData?.Role?.code === 'administrator' || userData?.roleId === 2);
+
+      const hoy = new Date();
+      setCurrentDateFilter(`${hoy.getDate()}/${hoy.getMonth() + 1}/${hoy.getFullYear()}`); 
+
+      await fetchStats();
+    } catch (e) {
+      console.error("Error inicial:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchStats]);
+
+  useEffect(() => {
+    loadInitialData();
+    
+    // AUTO-REFRESCO: Se actualiza cada 30 segundos automáticamente
+    const interval = setInterval(() => {
+      fetchStats();
+    }, 30000); 
+
+    return () => clearInterval(interval);
+  }, [loadInitialData, fetchStats]);
 
   if (loading) return <Loading />;
 
   return (
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
       
-      <Card bordered={false} style={{ 
-        borderRadius: 24, 
-        background: 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)',
-        boxShadow: '0 10px 20px rgba(0,0,0,0.1)'
-      }}>
-        <Title level={2} style={{ color: '#fff', margin: 0 }}>
-          ¡Bienvenido, {user?.Person?.firstName || user?.username || 'ADMINISTRADOR'}!
-        </Title>
-        <Text style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: 16 }}>
-          {isAdmin ? 'Panel de Gestión - Modo Administrador' : 'Modo: Usuario Personal'}
-        </Text>
-      </Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ flex: 1 }}>
+          <Card bordered={false} style={{ 
+            borderRadius: 24, 
+            background: 'linear-gradient(135deg, #8b4513 0%, #5d2e0a 100%)',
+            boxShadow: '0 10px 20px rgba(0,0,0,0.1)'
+          }}>
+            <Title level={2} style={{ color: '#fff', margin: 0 }}>
+              ¡Bienvenido, {user?.Person?.firstName || user?.username || 'ADMINISTRADOR'}!
+            </Title>
+            <Text style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: 16 }}>
+              {isAdmin ? 'Panel de Gestión - Modo Administrador' : 'Modo: Usuario Personal'}
+            </Text>
+          </Card>
+        </div>
+        <Button 
+          type="text" 
+          icon={<ReloadOutlined spin={refreshing} />} 
+          onClick={() => fetchStats(true)}
+          style={{ marginLeft: 16, color: '#8b4513' }}
+        >
+          Actualizar ahora
+        </Button>
+      </div>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
@@ -128,7 +138,6 @@ const Home = () => {
             subtitle="Reservas para hoy" 
             gradient="linear-gradient(135deg, #d2691e 0%, #a0522d 100%)"
             icon={<CalendarOutlined />} 
-            // AL HACER CLIC: Se envía la fecha a la página de reservas
             onClick={() => router.push(`/base/bookings?date=${currentDateFilter}`)} 
           />
         </Col>

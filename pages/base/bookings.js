@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
-
 import { Table, Tag, Space, Button, Card, Typography, message, Popconfirm, Badge } from 'antd'; 
-import { ClockCircleOutlined, SyncOutlined, LogoutOutlined, HistoryOutlined, EyeOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { 
+  ClockCircleOutlined, SyncOutlined, LogoutOutlined, 
+  HistoryOutlined, EyeOutlined, CloseCircleOutlined 
+} from '@ant-design/icons';
 import Dashboard from '@ui/layout/Dashboard';
-
-
+import { authService } from '@services/auth.service';
 
 const { Title, Text } = Typography;
 
@@ -14,11 +15,26 @@ const BookingsPage = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const [user, setUser] = useState(null);
+
+  // --- FUNCIÓN PARA DETECTAR SI ES ADMIN (Basado en tus tablas de DB) ---
+  const checkIsAdmin = (userData) => {
+    return (
+      userData?.roleId === 2 || 
+      userData?.Role?.id === 2 || 
+      userData?.roles?.some(r => r.roleId === 2 || r.id === 2) ||
+      userData?.Role?.code === 'administrator'
+    );
+  };
 
   const fetchBookings = useCallback(async (isHistory) => {
     setLoading(true);
     try {
-      // Cargamos los datos con un timestamp para evitar caché
+      const userData = await authService.user();
+      setUser(userData);
+      
+      const isAdmin = checkIsAdmin(userData);
+
       const res = await fetch(`/api/bookings?limit=500&_t=${Date.now()}`);
       const result = await res.json();
       
@@ -26,31 +42,29 @@ const BookingsPage = () => {
         let data = result.data || result;
         if (!Array.isArray(data)) data = [];
 
-        console.log("Datos brutos recibidos:", data);
+        const hoyStr = new Date().toLocaleDateString('en-CA');
 
-        if (!isHistory) {
-          // --- FILTRO DE HOY FLEXIBLE ---
-          // Obtenemos la fecha de hoy en formato YYYY-MM-DD sin problemas de zona horaria
-          const local = new Date();
-          const hoyStr = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
-          
-          data = data.filter(item => {
-            const status = (item.status || "").toUpperCase().trim();
-            const itemDate = item.date ? item.date.toString() : "";
-            
-            // CRITERIO: Mostrar si es de hoy O si el estado es CONFIRMADA/PENDIENTE
-            // Esto asegura que la reserva de Angela Lapo no se oculte.
-            const esDeHoy = itemDate.includes(hoyStr);
+        data = data.filter(item => {
+          const status = (item.status || "").toUpperCase().trim();
+          const itemDate = item.date ? item.date.split('T')[0] : "";
+          const esMio = item.userId === userData?.id;
+
+          // El Admin ve todo. El usuario solo lo suyo.
+          if (!isAdmin && !esMio) return false;
+
+          // Filtro de "Hoy" vs "Historial"
+          if (!isHistory) {
+            const esDeHoy = itemDate === hoyStr;
             const estaActiva = status === 'CONFIRMADA' || status === 'PENDIENTE';
-            
-            return esDeHoy || estaActiva;
-          });
-        }
+            return esDeHoy && estaActiva;
+          }
+          return true; 
+        });
         
         setBookings(data);
       }
     } catch (error) {
-      console.error("Error cargando reservas:", error);
+      console.error("Error:", error);
       message.error("Error al cargar datos");
     } finally {
       setLoading(false);
@@ -58,11 +72,6 @@ const BookingsPage = () => {
   }, []);
 
   const updateStatus = async (id, newStatus) => {
-    if (!id) {
-      message.error("ID de reserva no encontrado");
-      return;
-    }
-
     const hide = message.loading('Procesando...', 0);
     try {
       const res = await fetch('/api/bookings/update-status', {
@@ -70,13 +79,9 @@ const BookingsPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status: newStatus }),
       });
-
       if (res.ok) {
-        message.success(`Reserva ${newStatus} correctamente`);
+        message.success(`Reserva ${newStatus.toLowerCase()} correctamente`);
         fetchBookings(showHistory); 
-      } else {
-        const result = await res.json();
-        message.error(result.message || "Error al actualizar");
       }
     } catch (error) {
       message.error("Error de conexión");
@@ -86,9 +91,7 @@ const BookingsPage = () => {
   };
 
   useEffect(() => {
-    if (router.isReady) {
-      fetchBookings(showHistory);
-    }
+    if (router.isReady) { fetchBookings(showHistory); }
   }, [router.isReady, showHistory, fetchBookings]);
 
   const columns = [
@@ -97,7 +100,7 @@ const BookingsPage = () => {
       key: 'customer',
       render: (_, record) => (
         <Space direction="vertical" size={0}>
-          <Text strong>{record.user?.Person?.firstName} {record.user?.Person?.lastName}</Text>
+          <Text strong>{record.user?.Person?.firstName || 'Cliente'} {record.user?.Person?.lastName || ''}</Text>
           <Text type="secondary" style={{ fontSize: 12 }}>{record.user?.email}</Text>
         </Space>
       ),
@@ -113,9 +116,7 @@ const BookingsPage = () => {
       key: 'dateTime',
       render: (_, record) => (
         <Space direction="vertical" size={0}>
-          <Text strong style={{ color: '#1890ff' }}>
-            {record.date ? new Date(record.date).toLocaleDateString() : '---'}
-          </Text>
+          <Text strong style={{ color: '#1890ff' }}>{record.date?.split('T')[0]}</Text>
           <Text type="secondary"><ClockCircleOutlined /> {record.time}</Text>
         </Space>
       ),
@@ -126,10 +127,7 @@ const BookingsPage = () => {
       key: 'status',
       render: (status) => {
         const s = (status || "").toUpperCase().trim();
-        let color = 'orange';
-        if (s === 'CONFIRMADA') color = 'green';
-        if (s === 'FINALIZADA') color = 'blue';
-        if (s === 'CANCELADA') color = 'red';
+        let color = s === 'CONFIRMADA' ? 'green' : s === 'FINALIZADA' ? 'blue' : s === 'CANCELADA' ? 'red' : 'orange';
         return <Tag color={color}>{s}</Tag>;
       },
     },
@@ -138,29 +136,25 @@ const BookingsPage = () => {
       key: 'action',
       render: (_, record) => {
         const s = (record.status || "").toUpperCase().trim();
+        const isAdmin = checkIsAdmin(user); // Verificamos si TÚ eres admin
+        const isMyBooking = record.userId === user?.id;
+
+        // --- LÓGICA DE BOTONES PARA ADMIN ---
+        // Si eres Admin O es tu reserva, puedes gestionar.
+        const canManage = isAdmin || isMyBooking;
+
         return (
           <Space size="middle">
-            {s === 'CONFIRMADA' && (
-              <Popconfirm 
-                title="¿Finalizar esta reserva?" 
-                onConfirm={() => updateStatus(record.id, 'FINALIZADA')}
-                okText="Sí"
-                cancelText="No"
-              >
-                <Button 
-                  type="primary" 
-                  size="small" 
-                  icon={<LogoutOutlined />}
-                  style={{ display: 'flex', alignItems: 'center', backgroundColor: '#52c41a', borderColor: '#52c41a' }}
-                > 
-                  Finalizar 
+            {s === 'CONFIRMADA' && canManage && (
+              <Popconfirm title="¿Finalizar esta reserva?" onConfirm={() => updateStatus(record.id, 'FINALIZADA')}>
+                <Button type="primary" size="small" icon={<LogoutOutlined />} style={{ backgroundColor: '#52c41a' }}>
+                  Finalizar
                 </Button>
               </Popconfirm>
             )}
-            
-            {(s === 'CONFIRMADA' || s === 'PENDIENTE') && (
-              <Popconfirm title="¿Cancelar reserva?" onConfirm={() => updateStatus(record.id, 'CANCELADA')}>
-                <Button type="text" danger size="small" icon={<CloseCircleOutlined />} style={{ display: 'flex', alignItems: 'center' }}>
+            {(s === 'CONFIRMADA' || s === 'PENDIENTE') && canManage && (
+              <Popconfirm title="¿Cancelar esta reserva?" onConfirm={() => updateStatus(record.id, 'CANCELADA')}>
+                <Button type="text" danger size="small" icon={<CloseCircleOutlined />}>
                   Cancelar
                 </Button>
               </Popconfirm>
@@ -174,11 +168,12 @@ const BookingsPage = () => {
   return (
     <div style={{ padding: '24px' }}>
       <Card bordered={false} style={{ borderRadius: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <Title level={3} style={{ margin: 0 }}>Gestión de Reservas</Title>
+            <Title level={3}>Gestión de Reservas</Title>
             <Text type="secondary">
-              {showHistory ? "Historial completo de todas las reservas." : "Mostrando reservas activas para hoy."}
+              {checkIsAdmin(user) ? <Tag color="gold">Modo Administrador</Tag> : null}
+              {showHistory ? " Historial completo." : " Reservas activas de hoy."}
             </Text>
           </div>
           <Space>
@@ -193,14 +188,7 @@ const BookingsPage = () => {
             <Button icon={<SyncOutlined spin={loading} />} onClick={() => fetchBookings(showHistory)}>Actualizar</Button>
           </Space>
         </div>
-
-        <Table 
-          columns={columns} 
-          dataSource={bookings} 
-          rowKey="id" 
-          loading={loading}
-          pagination={{ pageSize: 7 }}
-        />
+        <Table columns={columns} dataSource={bookings} rowKey="id" loading={loading} />
       </Card>
     </div>
   );
@@ -208,3 +196,9 @@ const BookingsPage = () => {
 
 BookingsPage.Layout = Dashboard;
 export default BookingsPage;
+
+
+
+
+
+////205

@@ -7,42 +7,55 @@ export default async function handler(req, res) {
   try {
     const numPeople = parseInt(people) || 1;
     
-    // CORRECCIÓN DE FECHA: Mantenemos el mediodía para evitar saltos de día
+    // 1. Normalizamos la fecha de búsqueda (YYYY-MM-DD)
+    // Usamos string para comparar fechas de forma más segura en base de datos
     const [year, month, day] = date.split('-').map(Number);
     const searchDate = new Date(year, month - 1, day, 12, 0, 0, 0); 
 
-    const cleanTime = time.trim().substring(0, 5);
+    // 2. Convertimos la hora buscada a minutos para comparar rangos
+    const [searchHour, searchMin] = time.split(':').map(Number);
+    const searchTimeInMinutes = (searchHour * 60) + searchMin;
 
-    // 1. Buscamos reservas activas para ese momento exacto
-    const occupiedBookings = await prisma.base_booking.findMany({
+    // 3. Buscamos TODAS las reservas CONFIRMADAS para ese día
+    const dayBookings = await prisma.base_booking.findMany({
       where: {
         date: searchDate,
-        time: cleanTime,
         status: { notIn: ['CANCELADA', 'FINALIZADA'] }
       },
-      select: { tableId: true }
+      select: { tableId: true, time: true }
     });
 
-    const occupiedTableIds = occupiedBookings.map(b => b.tableId);
+    // 4. Filtramos las mesas que tienen conflicto de horario (Margen de 1 hora)
+    const MARGEN_MINUTOS = 60; // 1 hora de duración estimada por reserva
+    
+    const occupiedTableIds = dayBookings
+      .filter(booking => {
+        const [bHour, bMin] = booking.time.split(':').map(Number);
+        const bookingTimeInMinutes = (bHour * 60) + bMin;
+        
+        // Hay conflicto si la diferencia entre reservas es menor a 1 hora
+        const diferencia = Math.abs(bookingTimeInMinutes - searchTimeInMinutes);
+        return diferencia < MARGEN_MINUTOS;
+      })
+      .map(b => b.tableId);
 
-    // 2. Buscamos mesas que realmente pueden recibir gente
+    // 5. Buscamos las mesas que cumplen con capacidad y están libres en ese rango
     const availableTables = await prisma.base_table.findMany({
       where: {
-        // No deben tener reserva en ese horario
-        id: { notIn: occupiedTableIds.length > 0 ? occupiedTableIds : [-1] },
-        // Capacidad suficiente para los comensales
+        id: { notIn: occupiedTableIds.length > 0 ? occupiedTableIds : [] },
         capacity: { gte: numPeople },
-        // La mesa debe estar ACTIVA (No borrada lógicamente)
         active: true,
-        // ADICIONAL: La mesa no debe estar marcada como ocupada físicamente
-        status: { not: 'occupied' }
+        // Eliminamos el filtro 'status: occupied' para que el 
+        // sistema se base en RESERVAS y no en el estado físico manual
       },
-      orderBy: { number: 'asc' } // Orden 1, 2, 3, 4, 5, 6...
+      orderBy: { number: 'asc' }
     });
 
     return res.status(200).json(availableTables);
   } catch (error) {
     console.error("Error en available-tables:", error);
-    return res.status(500).json({ message: "Error al buscar mesas" });
+    return res.status(500).json({ message: "Error al buscar mesas disponibles" });
+  } finally {
+    await prisma.$disconnect();
   }
 }

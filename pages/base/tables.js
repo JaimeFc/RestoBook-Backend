@@ -30,13 +30,7 @@ const TablesManager = () => {
         const data = Array.isArray(result) ? result : (result.data || []);
         setDataSource(data);
       } else {
-        const responseAlt = await fetch('/api/table');
-        const dataAlt = await responseAlt.json();
-        if (responseAlt.ok) {
-          setDataSource(Array.isArray(dataAlt) ? dataAlt : (dataAlt.data || []));
-        } else {
-          message.error('Error al cargar mesas del servidor');
-        }
+        message.error('Error al cargar mesas del servidor');
       }
     } catch (error) {
       message.error('Error de conexión con el servidor');
@@ -70,26 +64,33 @@ const TablesManager = () => {
 
   const onFinish = async (values) => {
     const isEditing = !!editingTable;
-    const url = isEditing ? `/api/tables?id=${editingTable.id}` : '/api/tables';
+    const url = '/api/tables'; 
     const method = isEditing ? 'PUT' : 'POST';
 
     try {
+      const payload = {
+        ...values,
+        number: parseInt(values.number),
+        capacity: parseInt(values.capacity),
+      };
+
+      if (isEditing) {
+        payload.id = editingTable.id;
+      }
+
       const response = await fetch(url, {
         method: method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...values,
-          number: parseInt(values.number),
-          capacity: parseInt(values.capacity)
-        }),
+        body: JSON.stringify(payload),
       });
+
+      const res = await response.json();
 
       if (response.ok) {
         message.success(isEditing ? 'Mesa actualizada' : 'Mesa creada');
         handleCancel();
         fetchTables();
       } else {
-        const res = await response.json();
         message.error(res.error || 'Error en la operación');
       }
     } catch (error) {
@@ -97,15 +98,39 @@ const TablesManager = () => {
     }
   };
 
+  // --- ELIMINACIÓN CORREGIDA Y OPTIMIZADA ---
   const handleDelete = async (id) => {
+    // 1. Mostramos un mensaje de carga que bloquea la pantalla brevemente
+    const hideLoading = message.loading('Eliminando mesa y sus registros asociados...', 0);
+    setLoading(true);
+
     try {
-      const response = await fetch(`/api/tables?id=${id}`, { method: 'DELETE' });
+      // Enviamos el ID por URL (Query String) como espera el backend index.js
+      const response = await fetch(`/api/tables?id=${id}`, { 
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const result = await response.json();
+
       if (response.ok) {
-        message.success('Mesa eliminada');
-        fetchTables();
+        message.success('Mesa eliminada con éxito');
+        // 2. Refrescamos la lista inmediatamente
+        await fetchTables(); 
+      } else {
+        // 3. Si el backend devuelve un error específico, lo mostramos
+        Modal.error({
+          title: 'Error al eliminar',
+          content: result.error || 'No se pudo completar la acción.'
+        });
       }
     } catch (error) {
-      message.error('No se pudo eliminar');
+      console.error("Error Delete:", error);
+      message.error('Error de conexión al intentar borrar');
+    } finally {
+      // 4. Quitamos los estados de carga
+      hideLoading();
+      setLoading(false);
     }
   };
 
@@ -115,7 +140,6 @@ const TablesManager = () => {
       dataIndex: 'number',
       key: 'number',
       sorter: (a, b) => a.number - b.number,
-      // Color café para las etiquetas de mesa
       render: (num) => <Tag color="#8b4513" style={{ fontWeight: 'bold', borderRadius: '4px' }}>Mesa {num}</Tag>,
     },
     {
@@ -160,19 +184,25 @@ const TablesManager = () => {
         <Space size="middle">
           <Button 
             type="primary" 
-            size="small"
-            icon={<EditOutlined />} 
-            onClick={() => handleEdit(record)} 
-            style={{ backgroundColor: '#1890ff', borderColor: '#1890ff', borderRadius: '6px' }}
+  size="small"
+  icon={<EditOutlined />}
+  onClick={() => handleEdit(record)}
+  // Añadimos backgroundColor y borderColor al style existente
+  style={{ 
+    borderRadius: '6px',
+    backgroundColor: '#1890ff', // Azul estándar
+    borderColor: '#1890ff',
+    color: '#fff'}}
           >
             Editar
           </Button>
           <Popconfirm 
             title="¿Eliminar esta mesa?" 
+            description="Se eliminará la mesa y todo su historial de reservas. ¿Deseas continuar?"
             onConfirm={() => handleDelete(record.id)}
-            okText="Eliminar"
+            okText="Sí, Eliminar"
             cancelText="Cancelar"
-            okButtonProps={{ danger: true }}
+            okButtonProps={{ danger: true, loading: loading }}
           >
             <Button type="text" danger icon={<DeleteOutlined />}>Borrar</Button>
           </Popconfirm>
@@ -248,11 +278,11 @@ const TablesManager = () => {
 
           <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
             <Space>
-              <Button onClick={handleCancel} style={{ borderRadius: '6px' }}>Cancelar</Button>
+              <Button onClick={handleCancel}>Cancelar</Button>
               <Button 
                 type="primary" 
                 htmlType="submit" 
-                style={{ background: '#8b4513', borderColor: '#8b4513', borderRadius: '6px' }}
+                style={{ background: '#8b4513', borderColor: '#8b4513' }}
               >
                 {editingTable ? 'Guardar Cambios' : 'Crear Mesa'}
               </Button>
